@@ -107,10 +107,10 @@ func _build_environment() -> void:
 	# Scatter puts a glow around the sun when you shoot into it through haze.
 	environment.fog_sun_scatter = 0.55
 	# Aerial perspective is what makes a far ridge read as far away.
-	environment.fog_aerial_perspective = 0.85
+	environment.fog_aerial_perspective = 0.55
 	environment.fog_sky_affect = 0.55
 	# Height fog pools in the valleys and burns off as you climb.
-	environment.fog_height = float(TerrainGenerator.SEA_LEVEL) + 7.0
+	environment.fog_height = float(TerrainGenerator.SEA_LEVEL) + 3.0
 	environment.fog_height_density = 0.03
 
 	environment.glow_enabled = Settings.quality >= Settings.Quality.MEDIUM
@@ -346,7 +346,7 @@ func _apply(_delta: float) -> void:
 	# Mist gathers in the low ground overnight and lifts through the morning.
 	var still_air := clampf(1.0 - absf(elev - 3.0) / 14.0, 0.0, 1.0)
 	environment.fog_height_density = clampf(
-		0.02 + still_air * 0.10 + precipitation * 0.05, 0.0, 0.30) * fog_multiplier
+		0.008 + still_air * 0.045 + precipitation * 0.03, 0.0, 0.12) * fog_multiplier
 	if environment.volumetric_fog_enabled:
 		environment.volumetric_fog_density = clampf(
 			0.006 + biome.fog_density * 3.0 * fog_multiplier, 0.0, 0.09)
