@@ -238,12 +238,22 @@ The project exports to WebAssembly and is set up to deploy as a static site.
 
 ```bash
 bash build.sh          # fetches Godot + the web template, exports to ./build
+bash ship.sh           # builds, then deploys ./build to Vercel
 ```
 
-`vercel.json` is committed, so importing this repository into Vercel needs no
-configuration: it picks up the build command, the output directory, and the
-`Cross-Origin-Opener-Policy` / `Cross-Origin-Embedder-Policy` headers the
-threaded web build needs for `SharedArrayBuffer`.
+There are two ways to host it:
+
+- **Import the repo into Vercel.** `vercel.json` is committed, so it needs no
+  configuration: Vercel picks up the build command, the output directory and
+  the cross-origin headers. Every deploy re-downloads the Godot toolchain,
+  which takes a few minutes.
+- **`bash ship.sh`.** Builds here and uploads the finished static site, so
+  Vercel never touches Godot and deploys take seconds. Needs
+  `npm i -g vercel && vercel login` once.
+
+Either way the site must serve `Cross-Origin-Opener-Policy: same-origin` and
+`Cross-Origin-Embedder-Policy: require-corp`. Without them the browser refuses
+`SharedArrayBuffer` and the threaded build cannot start.
 
 To serve the build locally you need those same two headers — a plain
 `python -m http.server` will not work, because without cross-origin isolation
