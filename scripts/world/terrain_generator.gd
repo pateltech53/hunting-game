@@ -236,15 +236,20 @@ func find_flat_ground(around: Vector2, radius: float, tries: int = 90) -> Vector
 		var slope := slope_at(px, pz, h)
 		var score := 10.0 - slope * 3.0 - absf(float(h) - float(SEA_LEVEL) - 8.0) * 0.05
 		var biome := BiomeLibrary.get_biome(biome_from_height(float(px), float(pz), float(h)))
-		var canopy := 0
+		var blocked := 0
 		for offset: Vector2i in [Vector2i(0, 0), Vector2i(3, 0), Vector2i(-3, 0),
 				Vector2i(0, 3), Vector2i(0, -3), Vector2i(2, 2), Vector2i(-2, -2)]:
 			var ox := px + offset.x
 			var oz := pz + offset.y
 			var oh := height_i(ox, oz)
-			if tree_at(ox, oz, biome, oh, slope_at(ox, oz, oh)) != "":
-				canopy += 1
-		score -= float(canopy) * 4.0
+			var oslope := slope_at(ox, oz, oh)
+			# A bush you are standing inside fills the whole screen just as
+			# effectively as a tree, so every prop counts here.
+			if tree_at(ox, oz, biome, oh, oslope) != "":
+				blocked += 3
+			elif bush_at(ox, oz, biome, oh, oslope) or rock_at(ox, oz, biome, oh):
+				blocked += 2 if offset == Vector2i(0, 0) else 1
+		score -= float(blocked) * 2.0
 		if score > best_score:
 			best_score = score
 			best = Vector3(float(px) + 0.5, float(h) + 1.0, float(pz) + 0.5)
