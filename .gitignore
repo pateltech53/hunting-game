@@ -1,4 +1,28 @@
+# Godot 4 editor and import caches
+.godot/
+*.translation
+
+# The Godot toolchain build.sh downloads. Not vendored.
+Godot_v*_linux.x86_64
+godot.zip
+templates.tpz
+
+# Vercel
 .vercel
 .env*
-wildlight/Godot_v4.3-stable_linux.x86_64
+
+# Source snapshots. The code itself lives in this repository.
 *.zip
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Note: export_presets.cfg IS tracked on purpose. Godot's stock .gitignore
+# excludes it because it can hold signing credentials, but the Web preset
+# here holds none, and without it `godot --export-release "Web"` has no
+# preset to export and any clean-checkout build produces nothing.
+#
+# Note: build/ IS tracked on purpose too, so the site can be hosted straight
+# from the repository with no build step. Run `bash build.sh` and commit the
+# result whenever the game code changes.
