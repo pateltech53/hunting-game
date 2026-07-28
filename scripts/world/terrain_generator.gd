@@ -298,6 +298,21 @@ func find_flat_ground(around: Vector2, radius: float, tries: int = 90) -> Vector
 			elif bush_at(ox, oz, biome, oh, oslope) or rock_at(ox, oz, biome, oh):
 				blocked += 2 if offset == Vector2i(0, 0) else 1
 		score -= float(blocked) * 2.0
+
+		# Reject anywhere hemmed in. A spot can be perfectly flat underfoot and
+		# still open the game with your face in a hillside, so check that the
+		# ground nearby does not rise above head height in any direction.
+		var walled := 0.0
+		for step in 8:
+			var dir := TAU * float(step) / 8.0
+			for reach: float in [3.0, 6.0, 10.0]:
+				var nx := float(px) + cos(dir) * reach
+				var nz := float(pz) + sin(dir) * reach
+				var rise := height_at(nx, nz) - h
+				if rise > 1.6:
+					walled += rise - 1.6
+		score -= walled * 1.5
+
 		if score > best_score:
 			best_score = score
 			best = Vector3(float(px) + 0.5, h, float(pz) + 0.5)
