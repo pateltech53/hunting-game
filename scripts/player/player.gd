@@ -314,6 +314,14 @@ func current_biome() -> String:
 	return _current_biome
 
 
+## Resolves the biome immediately instead of waiting for the next physics tick.
+## Needed right after a spawn or a teleport, when anything that reads the biome
+## would otherwise get a stale answer.
+func refresh_biome() -> void:
+	if world != null:
+		_current_biome = world.biome_at(global_position.x, global_position.z)
+
+
 func is_third_person() -> bool:
 	return rig.third_person
 
@@ -338,6 +346,7 @@ func teleport(to: Vector3) -> void:
 	global_position = to
 	velocity = Vector3.ZERO
 	_last_position = to
+	refresh_biome()
 
 
 ## Scent carries downwind. Returns how strongly an animal at [param from]

@@ -214,6 +214,36 @@ then walks into the nearest village and reports on all of it. A typical run:
 
 ---
 
+## Playing it in a browser
+
+The project exports to WebAssembly and is set up to deploy as a static site.
+
+```bash
+bash build.sh          # fetches Godot + the web template, exports to ./build
+```
+
+`vercel.json` is committed, so importing this repository into Vercel needs no
+configuration: it picks up the build command, the output directory, and the
+`Cross-Origin-Opener-Policy` / `Cross-Origin-Embedder-Policy` headers the
+threaded web build needs for `SharedArrayBuffer`.
+
+To serve the build locally you need those same two headers — a plain
+`python -m http.server` will not work, because without cross-origin isolation
+the engine cannot start its threads.
+
+What differs in the browser:
+
+- The web build runs on **WebGL2 via the Compatibility renderer**, which has no
+  depth of field, SSAO or volumetric fog. Focus still governs scoring, and a
+  missed focus visibly softens the saved photograph so the mistake is not
+  invisible — but you do not get live bokeh in the viewfinder.
+- Web starts from a lighter preset (lower quality, shorter view distance, a
+  tighter initial load ring). Anything you change in Settings overrides it.
+- Photos are written to the browser's IndexedDB-backed storage rather than a
+  folder on disk, so the Discovery Book persists per browser.
+
+---
+
 ## How it is built
 
 ```

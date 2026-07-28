@@ -40,7 +40,9 @@ func setup(seed_value: int) -> void:
 func begin_initial_load(around: Vector3) -> void:
 	_centre = _chunk_of(around)
 	_initial_targets.clear()
-	var r := mini(view_distance, 4)
+	# Web waits on a slower build, so it opens with a tighter ring and streams
+	# the rest in behind the player.
+	var r := mini(view_distance, 3 if Settings.is_web() else 4)
 	for dz in range(-r, r + 1):
 		for dx in range(-r, r + 1):
 			var c := _centre + Vector2i(dx, dz)

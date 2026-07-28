@@ -52,6 +52,8 @@ pointing/emulate_touch_from_mouse=false
 
 renderer/rendering_method="forward_plus"
 renderer/rendering_method.mobile="mobile"
+; The web export runs on WebGL2, which only the Compatibility renderer targets.
+renderer/rendering_method.web="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
 anti_aliasing/quality/msaa_3d=1
 anti_aliasing/quality/screen_space_aa=1

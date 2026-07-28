@@ -96,11 +96,29 @@ const PAD_BINDINGS := {
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_register_actions()
+	_apply_platform_defaults()
 	load_settings()
 	touch_controls_enabled = DisplayServer.is_touchscreen_available()
 	if touch_controls_enabled:
 		scheme = Scheme.TOUCH
 	_apply_audio_buses()
+
+
+## The web build runs on WebGL2 through WebAssembly, which is a good deal
+## slower than a native Forward+ build, so it starts from a lighter preset.
+## Anything the player later saves in Settings overrides this.
+func _apply_platform_defaults() -> void:
+	if not OS.has_feature("web"):
+		return
+	quality = Quality.LOW
+	view_distance_chunks = 4
+	volumetric_fog = false
+	photo_resolution = 1280
+	show_histogram = false
+
+
+func is_web() -> bool:
+	return OS.has_feature("web")
 
 
 ## Builds the whole InputMap from the tables above.
@@ -192,8 +210,15 @@ func grass_density() -> float:
 			return 1.6
 
 
+## True only on the Forward+ / Mobile renderers. The web build runs on
+## Compatibility (WebGL2), which has no rendering device and therefore no
+## depth of field, SSAO or volumetric fog.
+func supports_advanced_rendering() -> bool:
+	return RenderingServer.get_rendering_device() != null
+
+
 func wants_volumetric_fog() -> bool:
-	return volumetric_fog and quality >= Quality.MEDIUM
+	return volumetric_fog and quality >= Quality.MEDIUM and supports_advanced_rendering()
 
 
 func shadow_distance() -> float:

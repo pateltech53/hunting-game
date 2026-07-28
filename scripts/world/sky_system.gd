@@ -96,7 +96,9 @@ func _build_environment() -> void:
 	environment.ambient_light_sky_contribution = 1.0
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	environment.tonemap_mode = Environment.TONE_MAPPER_ACES
-	environment.tonemap_white = 6.0
+	# White reference. Pushing this high crushes the midtones and turns shade
+	# under a canopy to mud; 1.5 keeps highlights rolling off without that.
+	environment.tonemap_white = 1.5
 	environment.tonemap_exposure = 1.0
 
 	environment.fog_enabled = true

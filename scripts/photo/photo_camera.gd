@@ -388,6 +388,16 @@ func _grab_frame() -> Image:
 			/ float(image.get_width())))
 		image.resize(target_w, maxi(target_h, 1), Image.INTERPOLATE_LANCZOS)
 
+	# The Compatibility renderer (the web build) cannot draw depth of field, so
+	# a missed focus would otherwise look identical to a sharp frame. Soften the
+	# saved image instead, so the mistake is visible in the gallery.
+	if not Settings.supports_advanced_rendering():
+		var hit := _centre_ray()
+		if not hit.is_empty():
+			var quality := focus_quality(player.eye_position().distance_to(hit["position"]))
+			if quality < 0.9:
+				_apply_smear(image, (1.0 - quality) * 1.5)
+
 	var smear := shake_risk()
 	if smear > 0.35:
 		_apply_smear(image, smear)

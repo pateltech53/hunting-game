@@ -199,6 +199,7 @@ func _on_load_finished() -> void:
 	player.global_position = Vector3(p.x, float(voxel_world.surface_height(p.x, p.z)) + 1.2,
 		p.z)
 	player.input_enabled = true
+	player.refresh_biome()
 	hud.visible = true
 	_loading.queue_free()
 	if Settings.scheme != Settings.Scheme.TOUCH:

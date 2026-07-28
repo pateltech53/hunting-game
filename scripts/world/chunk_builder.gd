@@ -11,6 +11,9 @@ const GRID := SIZE + PAD * 2
 const SIDE_SHADE_BOTTOM := 0.62
 const AO_TOP := 0.30
 
+const TREE_SCALE_MIN := 0.70
+const TREE_SCALE_RANGE := 0.30
+
 
 static func build(gen: TerrainGenerator, coord: Vector2i, grass_density: float,
 		want_collision: bool) -> Dictionary:
@@ -113,7 +116,10 @@ static func build(gen: TerrainGenerator, coord: Vector2i, grass_density: float,
 						% PropMeshes.VARIANTS,
 					"pos": Vector3(float(wx) + 0.5, float(h), float(wz) + 0.5),
 					"yaw": floor(gen.hash01(wx, wz, 16) * 4.0) * PI * 0.5,
-					"scale": 0.9 + gen.hash01(wx, wz, 17) * 0.35,
+					# Voxels are a metre, so a one-voxel trunk is already a fat
+					# tree. Scaling down thins the trunks and, more importantly,
+					# shrinks the canopies enough to leave gaps between them.
+					"scale": TREE_SCALE_MIN + gen.hash01(wx, wz, 17) * TREE_SCALE_RANGE,
 				})
 			elif gen.rock_at(wx, wz, biome, h):
 				props.append({

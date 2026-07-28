@@ -182,8 +182,10 @@ func tree_at(x: int, z: int, biome: Biome, h: int, slope: float) -> String:
 	if float(h) > biome.snow_line + 8.0:
 		return ""
 	# Forest noise clumps trees into stands with real clearings between them.
+	# The multiplier is kept modest on purpose: push it and the canopies merge
+	# into an unbroken ceiling with no sightlines and nothing to photograph.
 	var clump := _forest.get_noise_2d(float(x), float(z)) * 0.5 + 0.5
-	var density: float = biome.tree_density * (0.25 + clump * 1.9)
+	var density: float = biome.tree_density * (0.30 + clump * 1.05)
 	if hash01(x, z, 11) > density:
 		return ""
 	var kinds: Array = biome.tree_kinds
