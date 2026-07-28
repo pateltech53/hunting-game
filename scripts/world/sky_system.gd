@@ -333,7 +333,9 @@ func _apply(_delta: float) -> void:
 	_sky_material.sky_cover_modulate = Color(1, 1, 1, 1) * clampf(night * 1.2 - cloud_cover, 0.0, 1.0)
 
 	# --- ambient and exposure ---------------------------------------------
-	environment.ambient_light_energy = lerpf(0.06, 1.0, day) * lerpf(1.0, 1.25, cloud_cover)
+	# Sky ambient is the only light reaching anything the sun cannot see, so it
+	# carries the whole forest floor. Under-tune it and shade goes to mud.
+	environment.ambient_light_energy = lerpf(0.08, 1.35, day) * lerpf(1.0, 1.25, cloud_cover)
 	environment.tonemap_exposure = clampf(exposure_compensation, 0.02, 24.0)
 
 	# --- fog ---------------------------------------------------------------

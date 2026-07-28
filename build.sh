@@ -47,6 +47,9 @@ echo "==> importing project"
 
 echo "==> exporting web build"
 mkdir -p build
+# Stop Godot's resource scanner from importing the exported icons back into
+# the project and littering build/ with .import files.
+touch build/.gdignore
 "./${GODOT_BIN}" --headless --path . --export-release "Web" build/index.html
 
 test -s build/index.wasm || { echo "export produced no wasm"; exit 1; }

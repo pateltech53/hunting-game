@@ -218,9 +218,13 @@ func flower_at(x: int, z: int, biome: Biome, h: int, slope: float) -> int:
 
 ## Finds a flat, dry spot near the requested position - used for spawn points,
 ## camps and village plazas.
+##
+## Clearings are strongly preferred. Starting the player under a closed canopy
+## at dawn means opening the game staring at a dark wall of trunks, which is a
+## poor introduction to a game about light.
 func find_flat_ground(around: Vector2, radius: float, tries: int = 90) -> Vector3:
 	var best := Vector3(around.x, float(SEA_LEVEL) + 4.0, around.y)
-	var best_score := -1.0
+	var best_score := -INF
 	for i in tries:
 		var a := TAU * hash01(int(around.x) + i, int(around.y), 55)
 		var r := radius * sqrt(hash01(int(around.x), int(around.y) + i, 56))
@@ -231,6 +235,16 @@ func find_flat_ground(around: Vector2, radius: float, tries: int = 90) -> Vector
 			continue
 		var slope := slope_at(px, pz, h)
 		var score := 10.0 - slope * 3.0 - absf(float(h) - float(SEA_LEVEL) - 8.0) * 0.05
+		var biome := BiomeLibrary.get_biome(biome_from_height(float(px), float(pz), float(h)))
+		var canopy := 0
+		for offset: Vector2i in [Vector2i(0, 0), Vector2i(3, 0), Vector2i(-3, 0),
+				Vector2i(0, 3), Vector2i(0, -3), Vector2i(2, 2), Vector2i(-2, -2)]:
+			var ox := px + offset.x
+			var oz := pz + offset.y
+			var oh := height_i(ox, oz)
+			if tree_at(ox, oz, biome, oh, slope_at(ox, oz, oh)) != "":
+				canopy += 1
+		score -= float(canopy) * 4.0
 		if score > best_score:
 			best_score = score
 			best = Vector3(float(px) + 0.5, float(h) + 1.0, float(pz) + 0.5)
