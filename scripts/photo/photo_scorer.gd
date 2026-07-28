@@ -601,6 +601,9 @@ func commit(record: Dictionary) -> void:
 		Game.notify("New species recorded: %s" % record.get("subject_name", species),
 			"discovery")
 		AudioDirector.set_mood(AudioDirector.Mood.WONDER)
+	elif float(record.get("score", 0.0)) >= 92.0:
+		# A frame this good gets the orchestra, not just a chime.
+		AudioDirector.play("flourish", -7.0)
 	elif float(record.get("score", 0.0)) >= 84.0:
 		AudioDirector.play("score_great", -8.0)
 	elif float(record.get("score", 0.0)) >= 68.0:

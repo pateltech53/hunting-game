@@ -33,6 +33,8 @@ var villagers: Array[Villager] = []
 
 var _spawn_timer := 0.0
 var _village_timer := 0.0
+var _voice_timer := 3.0
+var _legendary_announced: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 var _village_populations: Dictionary = {}
 
@@ -60,6 +62,55 @@ func _process(delta: float) -> void:
 	if _village_timer <= 0.0:
 		_village_timer = 3.0
 		_manage_villages()
+	_update_voices(delta)
+
+
+## Animals call whether or not you are looking at them. This is most of what
+## makes the forest feel occupied: you hear a stag somewhere off to the left
+## long before you find it, and that is the cue to go and look.
+func _update_voices(delta: float) -> void:
+	_voice_timer -= delta
+	if _voice_timer > 0.0:
+		return
+	_voice_timer = _rng.randf_range(2.2, 6.5)
+	var live := active_animals()
+	if live.is_empty():
+		return
+	var origin := player.global_position
+	# Prefer animals that are near enough to hear but not already on screen.
+	var candidates: Array = []
+	for animal: Animal in live:
+		if animal.is_dead:
+			continue
+		var d := origin.distance_to(animal.global_position)
+		if d > 190.0 or d < 6.0:
+			continue
+		if not AudioDirector.has_call(animal.species.id):
+			continue
+		candidates.append(animal)
+	if candidates.is_empty():
+		return
+	var pick: Animal = candidates[_rng.randi_range(0, candidates.size() - 1)]
+	var distance := origin.distance_to(pick.global_position)
+	# Quieter with distance, and a resting animal mutters rather than calls.
+	var volume := -6.0 - distance * 0.045
+	if pick.state == Animal.State.REST:
+		volume -= 8.0
+	AudioDirector.play_call(pick.species.id, pick.global_position, volume)
+	Codex.record_call(pick.species.id)
+	_check_legendary(pick)
+
+
+## A legendary animal close by lifts the score, so the music tells you that
+## something unusual is out there before you have seen it.
+func _check_legendary(animal: Animal) -> void:
+	if animal.species.rarity < 0.9:
+		return
+	if _legendary_announced.has(animal.get_instance_id()):
+		return
+	_legendary_announced[animal.get_instance_id()] = true
+	AudioDirector.play("legendary", -6.0)
+	AudioDirector.set_mood(AudioDirector.Mood.WONDER)
 
 
 func target_population() -> int:

@@ -49,6 +49,48 @@ func _ready() -> void:
 	_music_task = WorkerThreadPool.add_task(_synthesise_music, true, "wildlight_music")
 
 
+# ---------------------------------------------------------------- web unlock
+
+var _web_unlocked := false
+
+
+## Browsers refuse to start an AudioContext until the page has seen a real user
+## gesture, and a context created before that stays suspended - which is heard
+## as the game having no sound at all. Godot's shell resumes it on its own in
+## most cases, but not when the canvas is inside an iframe or the first gesture
+## lands on a DOM element rather than the canvas, so we retry on our own first
+## input and restart the looping beds, which are the players most likely to
+## have been started while the context was dead.
+func _unhandled_input(_event: InputEvent) -> void:
+	if _web_unlocked:
+		return
+	_web_unlocked = true
+	if not OS.has_feature("web"):
+		return
+	JavaScriptBridge.eval("""
+		(function () {
+			try {
+				var ctx = (window.GodotAudio && window.GodotAudio.ctx) || null;
+				if (ctx && ctx.state !== 'running') { ctx.resume(); }
+			} catch (e) {}
+		})();
+	""", true)
+	_restart_loops()
+
+
+## Re-triggers every looping player. Safe to call at any point: a player that
+## is already running simply starts its loop again from the top.
+func _restart_loops() -> void:
+	for key: String in _amb_players:
+		var p: AudioStreamPlayer = _amb_players[key]
+		if p.stream != null and not p.playing:
+			p.play()
+	for key: String in _music_players:
+		var m: AudioStreamPlayer = _music_players[key]
+		if m.stream != null and not m.playing:
+			m.play()
+
+
 func _build_players() -> void:
 	for i in POOL_2D:
 		var p := AudioStreamPlayer.new()
@@ -63,7 +105,7 @@ func _build_players() -> void:
 		p3.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
 		add_child(p3)
 		_pool_3d.append(p3)
-	for key: String in ["wind", "rain", "stream"]:
+	for key: String in ["wind", "rain", "stream", "insects", "leaves", "night"]:
 		var a := AudioStreamPlayer.new()
 		a.bus = "Ambience"
 		a.volume_db = -80.0
@@ -72,7 +114,7 @@ func _build_players() -> void:
 	_wind = _amb_players["wind"]
 	_rain = _amb_players["rain"]
 	_stream = _amb_players["stream"]
-	for key: String in ["calm", "wonder", "tension"]:
+	for key: String in ["calm", "wonder", "tension", "dawn", "rain", "night"]:
 		var m := AudioStreamPlayer.new()
 		m.bus = "Music"
 		m.volume_db = -80.0
@@ -110,6 +152,13 @@ func _synthesise_sfx() -> void:
 	bank["wind_bed"] = Synth.wind_bed(rng, 8.0)
 	bank["rain_bed"] = Synth.rain_bed(rng, 6.0, false)
 	bank["stream_bed"] = Synth.stream_bed(rng, 6.0)
+	bank["insects_bed"] = Synth.insect_bed(rng, 7.0, false)
+	bank["leaves_bed"] = Synth.leaf_bed(rng, 6.0)
+	bank["night_bed"] = Synth.night_bed(rng, 8.0)
+	bank["branch"] = Synth.branch_snap(rng)
+	bank["splash"] = Synth.water_splash(rng)
+	bank["legendary"] = Synth.legendary_swell(rng)
+	bank["flourish"] = Synth.orchestral_flourish(rng)
 	for id: String in SpeciesLibraryScript.CALL_PARAMS:
 		bank["call_%s" % id] = Synth.animal_call(rng, SpeciesLibraryScript.CALL_PARAMS[id])
 	_pending_sfx = bank
@@ -123,6 +172,11 @@ func _synthesise_music() -> void:
 	bank["calm"] = Synth.music_layer([0.0, 7.0, 12.0, 15.0], 146.83, 12.0, 0, rng)
 	bank["wonder"] = Synth.music_layer([0.0, 5.0, 12.0, 19.0], 146.83, 12.0, 1, rng)
 	bank["tension"] = Synth.music_layer([0.0, 1.0, 7.0, 13.0], 110.0, 8.0, 2, rng)
+	# Time-of-day and weather beds, all rooted on D so they can overlap while
+	# one fades into the next without a key clash.
+	bank["dawn"] = Synth.music_acoustic(rng, 16.0, 146.83)
+	bank["rain"] = Synth.music_piano(rng, 18.0, 146.83)
+	bank["night"] = Synth.music_pad(rng, 16.0, 73.42)
 	_pending_music = bank
 
 
@@ -232,22 +286,58 @@ func _start_music() -> void:
 	set_mood(_mood)
 
 
+## Time of day and weather, fed in by the world so the score can follow them.
+var _hour := 9.0
+var _wetness := 0.0
+
+
+func set_music_context(hour: float, wetness: float) -> void:
+	_hour = hour
+	_wetness = clampf(wetness, 0.0, 1.0)
+	set_mood(_mood)
+
+
 func set_mood(mood: Mood) -> void:
 	_mood = mood
-	_music_targets["calm"] = 0.0
-	_music_targets["wonder"] = 0.0
-	_music_targets["tension"] = 0.0
+	for key: String in _music_targets:
+		_music_targets[key] = 0.0
 	if not _music_enabled:
 		return
-	match mood:
-		Mood.CALM:
-			_music_targets["calm"] = 0.85
-		Mood.WONDER:
-			_music_targets["calm"] = 0.35
-			_music_targets["wonder"] = 0.9
-		Mood.TENSION:
-			_music_targets["calm"] = 0.15
-			_music_targets["tension"] = 0.8
+
+	# Tension overrides everything: when something is wrong you want the pulse,
+	# not the guitar.
+	if mood == Mood.TENSION:
+		_music_targets["tension"] = 0.8
+		_music_targets["calm"] = 0.15
+		return
+
+	# Otherwise the bed follows the clock, with rain able to take over from it.
+	var dawn := 0.0
+	var day := 0.0
+	var night := 0.0
+	if _hour < 4.5 or _hour >= 21.5:
+		night = 1.0
+	elif _hour < 8.5:
+		dawn = 1.0                                   # first light: acoustic
+	elif _hour < 18.0:
+		day = 1.0
+	elif _hour < 20.0:
+		dawn = 0.7                                   # golden hour reprises it
+		day = 0.3
+	else:
+		night = 0.65
+		dawn = 0.35
+
+	# Rain pulls the score toward piano, but never silences the bed entirely.
+	var rain_mix: float = clampf(_wetness, 0.0, 1.0) * 0.85
+	var rest := 1.0 - rain_mix
+	_music_targets["rain"] = rain_mix
+	_music_targets["dawn"] = dawn * rest * 0.75
+	_music_targets["calm"] = day * rest * 0.7
+	_music_targets["night"] = night * rest * 0.8
+	if mood == Mood.WONDER:
+		# Something worth looking at: lift the pentatonic layer over the top.
+		_music_targets["wonder"] = 0.85
 
 
 func set_music_enabled(enabled: bool) -> void:
@@ -271,7 +361,10 @@ func _update_music(delta: float) -> void:
 # ------------------------------------------------------------------- ambience
 
 func _start_ambience() -> void:
-	var map := {"wind": "wind_bed", "rain": "rain_bed", "stream": "stream_bed"}
+	var map := {
+		"wind": "wind_bed", "rain": "rain_bed", "stream": "stream_bed",
+		"insects": "insects_bed", "leaves": "leaves_bed", "night": "night_bed",
+	}
 	for key: String in map:
 		var p: AudioStreamPlayer = _amb_players[key]
 		if sfx.has(map[key]):
@@ -280,11 +373,39 @@ func _start_ambience() -> void:
 			p.play()
 
 
-## Called by the weather / world systems each frame.
-func set_ambience(wind: float, rain: float, water: float) -> void:
+## Called by the weather / world systems each frame. `hour`, `tree_cover` and
+## `warmth` drive the layers that make the world sound inhabited rather than
+## merely windy - insects at dusk, leaves under canopy, room tone after dark.
+func set_ambience(wind: float, rain: float, water: float,
+		hour: float = -1.0, tree_cover: float = 0.5, warmth: float = 0.5) -> void:
 	_amb_targets["wind"] = clampf(wind, 0.0, 1.0)
 	_amb_targets["rain"] = clampf(rain, 0.0, 1.0)
 	_amb_targets["stream"] = clampf(water, 0.0, 1.0)
+	if hour < 0.0:
+		return
+
+	# Rain damps everything that lives outdoors.
+	var dry := 1.0 - clampf(rain, 0.0, 1.0) * 0.8
+
+	# Insects peak in the evening and hold through warm nights.
+	var insects := 0.0
+	if hour >= 18.0 or hour < 5.0:
+		insects = 0.75
+	elif hour >= 11.0 and hour < 18.0:
+		insects = 0.45
+	_amb_targets["insects"] = clampf(insects * dry * (0.4 + warmth * 0.9), 0.0, 1.0)
+
+	# Leaves need both canopy and wind to be heard.
+	_amb_targets["leaves"] = clampf(tree_cover * clampf(wind, 0.0, 1.0) * 1.25 * dry,
+		0.0, 1.0)
+
+	# Night room tone, fading in around dusk and out at first light.
+	var night := 0.0
+	if hour >= 20.0:
+		night = clampf((hour - 20.0) / 1.5, 0.0, 1.0)
+	elif hour < 6.0:
+		night = clampf((6.0 - hour) / 1.5, 0.0, 1.0)
+	_amb_targets["night"] = clampf(night * 0.85, 0.0, 1.0)
 
 
 func _update_ambience(delta: float) -> void:

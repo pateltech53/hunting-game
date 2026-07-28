@@ -166,7 +166,14 @@ func _update_audio() -> void:
 	var biome := BiomeLibrary.get_biome(_biome_id) if _biome_id != "" else null
 	var biome_wind: float = biome.wind_strength if biome != null else 0.4
 	var wind_level := clampf(_wind * 0.6 + biome_wind * 0.5, 0.0, 1.0)
-	AudioDirector.set_ambience(wind_level, _precip * (0.35 if _snowing else 1.0), 0.0)
+	var rain_level := _precip * (0.35 if _snowing else 1.0)
+	var hour: float = sky.time_of_day if sky != null else 12.0
+	# Bird activity doubles as a decent proxy for how wooded it is here, and
+	# the warm biomes are the ones with the insects.
+	var cover: float = clampf(biome.bird_activity * 0.6, 0.0, 1.0) if biome != null else 0.5
+	var warmth: float = clampf(1.0 - biome.wind_strength, 0.0, 1.0) if biome != null else 0.5
+	AudioDirector.set_ambience(wind_level, rain_level, 0.0, hour, cover, warmth)
+	AudioDirector.set_music_context(hour, rain_level)
 	var bird := 0.0
 	if biome != null and sky != null:
 		bird = biome.bird_activity

@@ -555,3 +555,252 @@ static func _quantise(freq: float, seconds: float) -> float:
 static func _quantise_rate(rate: float, seconds: float) -> float:
 	var cycles := maxf(1.0, round(rate * seconds))
 	return cycles / seconds
+
+
+# ------------------------------------------------------- ambience: living world
+
+## Crickets and cicadas. Two bands: a dense high shimmer that reads as cicadas
+## in the heat, and sparse low chirps that carry at night.
+static func insect_bed(rng: RandomNumberGenerator, seconds: float = 7.0,
+		night := false) -> AudioStreamWAV:
+	var buf := make_buffer(seconds)
+	var chirps := int(seconds * (26.0 if night else 14.0))
+	for c in chirps:
+		var at := rng.randf_range(0.0, seconds - 0.2)
+		var f := rng.randf_range(2600.0, 4400.0) if night else rng.randf_range(4200.0, 6800.0)
+		# A cricket chirp is a short burst of pulses, not one tone.
+		var pulses := rng.randi_range(2, 4)
+		for p in pulses:
+			add_tone(buf, at + float(p) * 0.035, 0.018, f, f * 0.97, 0.10, Wave.TRI)
+	if not night:
+		# Daytime cicada shimmer: amplitude-modulated noise up high.
+		var n := buf.size()
+		var shimmer := PackedFloat32Array()
+		shimmer.resize(n)
+		for i in n:
+			shimmer[i] = rng.randf_range(-1.0, 1.0)
+		shimmer = highpass(lowpass(shimmer, 7200.0), 3800.0)
+		for i in n:
+			var t := float(i) / float(RATE)
+			shimmer[i] *= 0.16 * (0.6 + 0.4 * sin(TAU * t * 11.0))
+			buf[i] += shimmer[i]
+	return to_stream(seamless(normalize(buf, 0.34)), true)
+
+
+## Leaves. Sits above the wind bed in the spectrum so the two stack into one
+## convincing canopy instead of muddying each other.
+static func leaf_bed(rng: RandomNumberGenerator, seconds: float = 6.0) -> AudioStreamWAV:
+	var n := int(seconds * RATE)
+	var buf := PackedFloat32Array()
+	buf.resize(n)
+	for i in n:
+		buf[i] = rng.randf_range(-1.0, 1.0)
+	var shaped := highpass(lowpass(buf, 6400.0), 1400.0)
+	for i in n:
+		var t := float(i) / float(RATE)
+		# Rustle comes in irregular pushes, like gusts catching the canopy.
+		var gust := 0.30 + 0.70 * maxf(0.0,
+			sin(TAU * t / 5.3) * sin(TAU * t / 1.7 + 0.9) + 0.25)
+		shaped[i] *= gust
+	return to_stream(seamless(normalize(shaped, 0.30)), true)
+
+
+## The low room-tone of a forest after dark: air, distance and a little owl.
+static func night_bed(rng: RandomNumberGenerator, seconds: float = 8.0) -> AudioStreamWAV:
+	var n := int(seconds * RATE)
+	var buf := PackedFloat32Array()
+	buf.resize(n)
+	for i in n:
+		buf[i] = rng.randf_range(-1.0, 1.0)
+	var shaped := lowpass(buf, 260.0)
+	shaped = highpass(shaped, 40.0)
+	for i in n:
+		shaped[i] *= 0.5
+	# Two distant hoots per loop, well back in the reverb.
+	for h in 2:
+		var at := rng.randf_range(0.5, seconds - 2.0)
+		add_tone(shaped, at, 0.28, 300.0, 262.0, 0.09, Wave.SINE)
+		add_tone(shaped, at + 0.45, 0.34, 262.0, 248.0, 0.07, Wave.SINE)
+	shaped = reverb(shaped, 0.5, 0.8)
+	return to_stream(seamless(normalize(shaped, 0.30)), true)
+
+
+## A branch going under a boot. The cue that you have just given yourself away.
+static func branch_snap(rng: RandomNumberGenerator) -> AudioStreamWAV:
+	var buf := make_buffer(0.5)
+	add_noise(buf, 0.0, 0.012, 0.85, rng, 1.0)
+	add_tone(buf, 0.0, 0.05, rng.randf_range(320.0, 640.0), 120.0, 0.35, Wave.TRI)
+	# The splintering tail.
+	for s in 5:
+		add_noise(buf, rng.randf_range(0.01, 0.16), 0.008, 0.22, rng, 1.0)
+	var shaped := lowpass(buf, 5200.0)
+	shaped = reverb(shaped, 0.22, 0.55)
+	return to_stream(deglitch(normalize(shaped, 0.7)))
+
+
+## Something entering water, or leaving it in a hurry.
+static func water_splash(rng: RandomNumberGenerator) -> AudioStreamWAV:
+	var buf := make_buffer(0.8)
+	add_noise(buf, 0.0, 0.09, 0.7, rng, 2.0)
+	# Bubbles: rising pitches after the impact.
+	for b in 7:
+		var at := rng.randf_range(0.04, 0.42)
+		var f := rng.randf_range(500.0, 1500.0)
+		add_tone(buf, at, 0.05, f, f * 1.8, 0.10, Wave.SINE)
+	var shaped := lowpass(buf, 4200.0)
+	shaped = highpass(shaped, 180.0)
+	shaped = reverb(shaped, 0.3, 0.6)
+	return to_stream(deglitch(normalize(shaped, 0.6)))
+
+
+# --------------------------------------------------------- plucked / struck
+
+## Karplus-Strong: a burst of noise fed through a decaying delay line. Cheap,
+## and it sounds like a real string because it is the same physics.
+static func pluck(buf: PackedFloat32Array, start: float, freq: float, amp: float,
+		rng: RandomNumberGenerator, damp: float = 0.996, dur: float = 2.2) -> void:
+	var delay := maxi(2, int(float(RATE) / maxf(freq, 20.0)))
+	var line := PackedFloat32Array()
+	line.resize(delay)
+	for i in delay:
+		line[i] = rng.randf_range(-1.0, 1.0)
+	var start_i := int(start * RATE)
+	var count := mini(int(dur * RATE), buf.size() - start_i)
+	var idx := 0
+	for i in count:
+		var nxt := (idx + 1) % delay
+		# Average neighbouring samples: the low-pass that makes it decay.
+		var v := (line[idx] + line[nxt]) * 0.5 * damp
+		line[idx] = v
+		idx = nxt
+		# Fade the tail so notes do not click when they run out.
+		var fade := 1.0 - float(i) / float(count)
+		buf[start_i + i] += v * amp * fade
+
+
+## Struck string: a piano is mostly a fast attack, a handful of slightly sharp
+## partials, and a long decay.
+static func strike(buf: PackedFloat32Array, start: float, freq: float, amp: float,
+		dur: float = 2.6) -> void:
+	var partials := [1.0, 2.001, 3.004, 4.01, 5.02]
+	var gains := [1.0, 0.42, 0.22, 0.10, 0.05]
+	for p in partials.size():
+		var f: float = freq * float(partials[p])
+		if f > float(RATE) * 0.45:
+			continue
+		var start_i := int(start * RATE)
+		var count := mini(int(dur * RATE), buf.size() - start_i)
+		var phase := 0.0
+		var g: float = amp * float(gains[p])
+		for i in count:
+			phase += TAU * f / float(RATE)
+			var t := float(i) / float(RATE)
+			# Higher partials die away faster, as they do on a real string.
+			var decay: float = exp(-t * (1.6 + float(p) * 1.4))
+			buf[start_i + i] += sin(phase) * g * decay
+
+
+# ------------------------------------------------------------- adaptive music
+
+## Soft fingerpicked acoustic guitar. The morning bed.
+static func music_acoustic(rng: RandomNumberGenerator, seconds: float,
+		root_hz: float) -> AudioStreamWAV:
+	var buf := make_buffer(seconds)
+	# An open, unhurried voicing - root, fifth, octave, ninth.
+	var voicing := [0.0, 7.0, 12.0, 14.0, 19.0]
+	var step := 0.42
+	var t := 0.0
+	var i := 0
+	while t < seconds - 2.2:
+		var semi: float = voicing[i % voicing.size()]
+		var f := root_hz * pow(2.0, semi / 12.0)
+		pluck(buf, t, f, 0.34, rng, 0.9965, minf(2.4, seconds - t))
+		# Every fourth note, add the octave above for a little lift.
+		if i % 4 == 3:
+			pluck(buf, t + 0.06, f * 2.0, 0.13, rng, 0.994, minf(1.6, seconds - t))
+		t += step * (1.5 if i % 8 == 7 else 1.0)
+		i += 1
+	var shaped := lowpass(buf, 4200.0)
+	shaped = highpass(shaped, 70.0)
+	shaped = reverb(shaped, 0.34, 0.7)
+	return to_stream(seamless(normalize(shaped, 0.5)), true)
+
+
+## Sparse piano. The rain bed - slow, spaced, a little melancholy.
+static func music_piano(rng: RandomNumberGenerator, seconds: float,
+		root_hz: float) -> AudioStreamWAV:
+	var buf := make_buffer(seconds)
+	# Natural minor, so it stays wistful rather than sad.
+	var scale := [0.0, 3.0, 5.0, 7.0, 10.0, 12.0]
+	var t := 0.0
+	while t < seconds - 2.6:
+		var semi: float = scale[rng.randi_range(0, scale.size() - 1)]
+		var f := root_hz * pow(2.0, semi / 12.0)
+		strike(buf, t, f, 0.26, minf(2.8, seconds - t))
+		# A quiet left hand underneath every other phrase.
+		if rng.randf() < 0.45:
+			strike(buf, t + 0.02, root_hz * 0.5, 0.15, minf(3.0, seconds - t))
+		t += rng.randf_range(0.9, 1.9)
+	var shaped := lowpass(buf, 3400.0)
+	shaped = highpass(shaped, 55.0)
+	shaped = reverb(shaped, 0.46, 0.8)
+	return to_stream(seamless(normalize(shaped, 0.48)), true)
+
+
+## Slow ambient pad for the small hours. Barely moves.
+static func music_pad(rng: RandomNumberGenerator, seconds: float,
+		root_hz: float) -> AudioStreamWAV:
+	var n := int(seconds * RATE)
+	var buf := PackedFloat32Array()
+	buf.resize(n)
+	buf.fill(0.0)
+	for semi: float in [0.0, 7.0, 15.0, 19.0]:
+		var f := _quantise(root_hz * pow(2.0, semi / 12.0), seconds)
+		for d in 2:
+			var detune: float = [0.0, 0.09][d]
+			var freq := _quantise(f + detune, seconds)
+			var rate := _quantise_rate(0.033 + 0.017 * float(d), seconds)
+			var phase := 0.0
+			for i in n:
+				var t := float(i) / float(RATE)
+				phase += TAU * freq / float(RATE)
+				buf[i] += sin(phase) * 0.13 * (0.5 + 0.5 * sin(TAU * rate * t))
+	var shaped := lowpass(buf, 1500.0)
+	shaped = reverb(shaped, 0.55, 0.86)
+	return to_stream(seamless(normalize(shaped, 0.5)), true)
+
+
+## Music swells when a legendary animal comes into view.
+static func legendary_swell(rng: RandomNumberGenerator) -> AudioStreamWAV:
+	var buf := make_buffer(4.5)
+	var root := 174.61                                  # F3
+	for semi: float in [0.0, 7.0, 12.0, 16.0, 19.0]:
+		var f := root * pow(2.0, semi / 12.0)
+		var phase := 0.0
+		for i in buf.size():
+			var t := float(i) / float(RATE)
+			phase += TAU * f / float(RATE)
+			# Slow crescendo, then a long release.
+			var env: float = smoothstep(0.0, 2.2, t) * (1.0 - smoothstep(2.6, 4.5, t))
+			buf[i] += sin(phase) * 0.11 * env
+	add_noise(buf, 0.0, 2.4, 0.05, rng, 0.6)             # a breath of air under it
+	var shaped := lowpass(buf, 3000.0)
+	shaped = reverb(shaped, 0.6, 0.88)
+	return to_stream(deglitch(normalize(shaped, 0.62)))
+
+
+## The little orchestral lift for a frame that came out perfectly.
+static func orchestral_flourish(rng: RandomNumberGenerator) -> AudioStreamWAV:
+	var buf := make_buffer(2.6)
+	var root := 261.63                                   # C4
+	# A rising arpeggio, strings-ish, each note overlapping the last.
+	var steps := [0.0, 4.0, 7.0, 12.0, 16.0, 19.0]
+	for s in steps.size():
+		var f := root * pow(2.0, float(steps[s]) / 12.0)
+		var at := float(s) * 0.11
+		add_tone(buf, at, 1.5, f, f * 1.002, 0.15, Wave.SINE)
+		add_tone(buf, at, 1.2, f * 2.0, f * 2.0, 0.04, Wave.TRI)
+	add_noise(buf, 0.0, 0.06, 0.10, rng, 3.0)
+	var shaped := lowpass(buf, 5200.0)
+	shaped = reverb(shaped, 0.5, 0.8)
+	return to_stream(deglitch(normalize(shaped, 0.6)))
