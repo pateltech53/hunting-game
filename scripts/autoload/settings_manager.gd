@@ -34,17 +34,26 @@ var touch_controls_enabled: bool = false
 var scheme: Scheme = Scheme.KEYBOARD
 
 ## action -> [physical keycodes]
+## Laid out for a laptop with no mouse. Movement stays on WASD, the arrow keys
+## drive the view so a trackpad is never required, and the two "aim" verbs are
+## deliberately separate keys: F brings the camera up, R shoulders the rifle.
+## A trackpad click is the shutter.
 const KEY_BINDINGS := {
-	"move_forward": [KEY_W, KEY_UP],
-	"move_back": [KEY_S, KEY_DOWN],
-	"move_left": [KEY_A, KEY_LEFT],
-	"move_right": [KEY_D, KEY_RIGHT],
+	"move_forward": [KEY_W],
+	"move_back": [KEY_S],
+	"move_left": [KEY_A],
+	"move_right": [KEY_D],
+	"look_up": [KEY_UP],
+	"look_down": [KEY_DOWN],
+	"look_left": [KEY_LEFT],
+	"look_right": [KEY_RIGHT],
 	"jump": [KEY_SPACE],
 	"sprint": [KEY_SHIFT],
-	"crouch": [KEY_CTRL, KEY_C],
+	"crouch": [KEY_C],
 	"toggle_view": [KEY_V],
-	"raise_camera": [],           # mouse right, added below
-	"capture": [],                # mouse left, added below
+	"raise_camera": [KEY_F],      # mouse right added below
+	"aim_rifle": [KEY_R],
+	"capture": [KEY_ENTER, KEY_KP_ENTER],  # mouse left added below
 	"swap_tool": [KEY_X],
 	"scan": [KEY_Q],
 	"listen": [KEY_E],
@@ -52,7 +61,7 @@ const KEY_BINDINGS := {
 	"map": [KEY_M],
 	"journal_contracts": [KEY_J],
 	"pause": [KEY_ESCAPE],
-	"interact": [KEY_F],
+	"interact": [KEY_B],
 	"sandbox_panel": [KEY_G],
 	"lens_next": [KEY_BRACKETRIGHT],
 	"lens_prev": [KEY_BRACKETLEFT],
@@ -64,11 +73,14 @@ const KEY_BINDINGS := {
 	"shutter_faster": [KEY_4],
 	"iso_down": [KEY_5],
 	"iso_up": [KEY_6],
-	"autofocus": [KEY_R],
+	"autofocus": [KEY_Z],
 	"time_forward": [KEY_PAGEUP],
 	"time_back": [KEY_PAGEDOWN],
 	"reload": [KEY_T],
 }
+
+## Degrees per second the arrow keys turn the view.
+const KEY_LOOK_SPEED := 132.0
 
 const MOUSE_BINDINGS := {
 	"capture": MOUSE_BUTTON_LEFT,
@@ -91,6 +103,9 @@ const PAD_BINDINGS := {
 	"aperture_open": JOY_BUTTON_DPAD_UP,
 	"aperture_close": JOY_BUTTON_DPAD_DOWN,
 }
+
+## Actions the mouse contributes to but that must still exist without one.
+const MOUSELESS_HINT := "Arrow keys look · F camera · R rifle · Enter shutter"
 
 
 func _ready() -> void:

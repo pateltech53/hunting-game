@@ -7,11 +7,18 @@ extends Node3D
 signal animal_spawned(animal: Animal)
 signal animal_died(animal: Animal)
 
-const SPAWN_INTERVAL := 1.1
-const SPAWN_MIN := 55.0
+const SPAWN_INTERVAL := 0.45
+const SPAWN_MIN := 42.0
 const SPAWN_MAX := 165.0
-const DESPAWN := 320.0
-const BASE_POPULATION := 17
+const DESPAWN := 340.0
+## A forest with a dozen animals in 300 metres reads as empty. This is the
+## headcount the world aims to hold around the player; the weather modifier
+## still thins it out in bad conditions.
+const BASE_POPULATION := 52
+## Until the world is stocked, spawn far more eagerly so the first minute has
+## something in it rather than a long empty walk.
+const WARMUP_POPULATION := 22
+const WARMUP_INTERVAL := 0.12
 const VILLAGE_RANGE := 190.0
 const VILLAGERS_PER_VILLAGE := 7
 
@@ -47,7 +54,8 @@ func _process(delta: float) -> void:
 	_village_timer -= delta
 	_cull()
 	if _spawn_timer <= 0.0:
-		_spawn_timer = SPAWN_INTERVAL
+		_spawn_timer = WARMUP_INTERVAL if animals.size() < WARMUP_POPULATION \
+			else SPAWN_INTERVAL
 		_try_spawn()
 	if _village_timer <= 0.0:
 		_village_timer = 3.0
@@ -185,13 +193,15 @@ func spawn_herd(species: Species, centre: Vector3) -> Array:
 
 	if not spawned.is_empty():
 		_seed_sign(species, centre)
-		_seed_trail(species, centre)
+		# Credit the seeded prints to the leader so following them actually
+		# arrives at an animal rather than at an empty clearing.
+		_seed_trail(species, centre, leader.get_instance_id())
 	return spawned
 
 
 ## Leaves a short trail of prints running into the area, so a scan finds
 ## something even if the animal has already moved on.
-func _seed_trail(species: Species, centre: Vector3) -> void:
+func _seed_trail(species: Species, centre: Vector3, walker: int = 0) -> void:
 	if track_manager == null:
 		return
 	var heading := _rng.randf_range(-PI, PI)
@@ -202,7 +212,7 @@ func _seed_trail(species: Species, centre: Vector3) -> void:
 		pos += Vector3(sin(heading), 0.0, cos(heading)) * stride
 		heading += _rng.randf_range(-0.12, 0.12)
 		pos.y = float(world.surface_height(pos.x, pos.z))
-		track_manager.register_track(species, pos, heading)
+		track_manager.register_track(species, pos, heading, walker)
 
 
 func _seed_sign(species: Species, centre: Vector3) -> void:

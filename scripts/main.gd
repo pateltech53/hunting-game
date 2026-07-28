@@ -8,6 +8,10 @@ const SMOKE_SECONDS := 25.0
 
 var _smoke := false
 var _smoke_elapsed := 0.0
+var _shots := false
+var _shot_dir := "user://shots"
+var _shot_queue: Array = []
+var _shot_timer := 0.0
 
 
 func _ready() -> void:
@@ -17,10 +21,75 @@ func _ready() -> void:
 		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_LANDSCAPE)
 
 	_smoke = OS.get_cmdline_user_args().has("--smoke")
+	_shots = OS.get_cmdline_user_args().has("--shots")
+	if _shots:
+		_run_shot_test()
+		return
 	if _smoke:
 		_run_smoke_test()
 		return
 	Game.boot()
+
+
+# ------------------------------------------------------------------- shot mode
+
+## Boots a world and writes PNGs of a scripted camera tour, so the look of the
+## game can be checked without a person at the keyboard. Run it under a virtual
+## display: `xvfb-run -a ./Godot... --path . --rendering-driver opengl3 -- --shots`
+func _run_shot_test() -> void:
+	var seed_value := 20240719
+	for arg: String in OS.get_cmdline_user_args():
+		if arg.begins_with("--seed="):
+			seed_value = int(arg.trim_prefix("--seed="))
+		elif arg.begins_with("--out="):
+			_shot_dir = arg.trim_prefix("--out=")
+	DirAccess.make_dir_recursive_absolute(_shot_dir)
+	Game.start_game(Game.Mode.EXPEDITION, seed_value)
+	_shot_queue = [
+		{"t": 12.0, "name": "01_first_person", "do": "none"},
+		{"t": 2.0, "name": "02_third_person", "do": "third"},
+		{"t": 2.0, "name": "03_third_person_aim", "do": "third_aim"},
+		{"t": 2.0, "name": "04_first_person_aim", "do": "first_aim"},
+	]
+
+
+func _process_shots(delta: float) -> void:
+	if _shot_queue.is_empty():
+		return
+	_shot_timer += delta
+	var step: Dictionary = _shot_queue[0]
+	if _shot_timer < float(step["t"]):
+		return
+	_shot_timer = 0.0
+	_shot_queue.pop_front()
+	_apply_shot_action(String(step["do"]))
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var image := get_viewport().get_texture().get_image()
+	var path := "%s/%s.png" % [_shot_dir, step["name"]]
+	image.save_png(path)
+	print("[shots] wrote %s" % path)
+	if _shot_queue.is_empty():
+		print("[shots] done")
+		get_tree().quit(0)
+
+
+func _apply_shot_action(action: String) -> void:
+	var world: Node = Game.world
+	if world == null:
+		return
+	var player: Player = world.get("player")
+	var camera: PhotoCamera = world.get("photo_camera")
+	match action:
+		"third":
+			player.rig.set_third_person(true)
+		"third_aim":
+			player.rig.set_third_person(true)
+			camera.set_raised(true)
+		"first_aim":
+			player.rig.set_third_person(false)
+			camera.set_raised(true)
+	print("[shots] action %s -> third_person=%s" % [action, player.rig.third_person])
 
 
 ## Boots straight into a world and reports on it, so a headless run exercises
@@ -42,6 +111,9 @@ var _smoke_stage := 0
 
 
 func _process(delta: float) -> void:
+	if _shots:
+		_process_shots(delta)
+		return
 	if not _smoke:
 		return
 	_smoke_elapsed += delta

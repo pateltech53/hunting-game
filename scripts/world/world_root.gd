@@ -14,6 +14,7 @@ var scorer: PhotoScorer
 var tracker: Tracker
 var wildlife: WildlifeDirector
 var track_manager: TrackManager
+var trail_guide: TrailGuide
 var board: ContractBoard
 var hud: HUD
 var touch: TouchControls
@@ -109,10 +110,16 @@ func _build_systems() -> void:
 	scorer.setup(player, sky, voxel_world, weather)
 	scorer.subject_provider = wildlife.subjects
 
+	trail_guide = TrailGuide.new()
+	trail_guide.name = "TrailGuide"
+	add_child(trail_guide)
+	trail_guide.setup(track_manager, voxel_world)
+
 	tracker = Tracker.new()
 	tracker.name = "Tracker"
 	add_child(tracker)
 	tracker.setup(player, track_manager, wildlife, sky)
+	tracker.trail_guide = trail_guide
 
 	board = ContractBoard.new()
 	board.name = "Contracts"

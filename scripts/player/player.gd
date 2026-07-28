@@ -199,6 +199,19 @@ func _handle_look_stick(delta: float) -> void:
 		var scale := Settings.gamepad_sensitivity * 220.0 * delta
 		rig.apply_look(stick.x * scale, stick.y * scale)
 
+	# Arrow keys. The whole game has to be playable on a laptop with no mouse,
+	# so this is a first-class way to aim rather than an accessibility bolt-on.
+	var keys := Input.get_vector("look_left", "look_right", "look_up", "look_down")
+	if keys != Vector2.ZERO:
+		# apply_look multiplies by look sensitivity, which is tuned for mouse
+		# pixels; divide it back out so the turn rate here is a real angle.
+		var per_second := deg_to_rad(Settings.KEY_LOOK_SPEED) * delta
+		var sens := maxf(Settings.look_sensitivity(), 0.00001)
+		# Aiming slows the turn so fine framing is possible without a mouse.
+		var precision: float = 0.35 if rig.aiming else 1.0
+		rig.apply_look(keys.x * per_second * precision / sens,
+			keys.y * per_second * precision / sens)
+
 
 func _handle_stance(delta: float) -> void:
 	sprinting = Input.is_action_pressed("sprint")

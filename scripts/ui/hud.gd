@@ -156,7 +156,10 @@ func _build_bottom() -> void:
 	_stamina.add_theme_stylebox_override("fill", fill)
 	_stamina.add_theme_stylebox_override("background", bg)
 	box.add_child(_stamina)
-	box.add_child(UITheme.label("RMB aim  ·  LMB shoot  ·  X swap  ·  Q scan  ·  E listen",
+	box.add_child(UITheme.label(
+		"F camera  ·  R rifle  ·  click/⏎ shoot  ·  X swap  ·  Q track  ·  E listen",
+		11, UITheme.INK_FAINT))
+	box.add_child(UITheme.label("arrows look  ·  WASD move  ·  V view",
 		11, UITheme.INK_FAINT))
 	panel.add_child(box)
 	_root.add_child(panel)

@@ -8,9 +8,13 @@ extends Node3D
 signal view_mode_changed(third_person: bool)
 
 const FIRST_PERSON_OFFSET := Vector3(0.0, 0.0, 0.0)
-const THIRD_PERSON_OFFSET := Vector3(0.55, 0.18, 0.0)
-const THIRD_PERSON_DISTANCE := 3.4
-const AIM_DISTANCE := 1.9
+const THIRD_PERSON_OFFSET := Vector3(0.62, 0.28, 0.0)
+const THIRD_PERSON_DISTANCE := 3.6
+const AIM_DISTANCE := 1.8
+
+## Terrain plus props. Canopy and trunks are props: without them in the mask
+## the camera happily parks itself inside a fir and the player sees leaves.
+const ARM_MASK := 1 | (1 << 3)
 
 var yaw := 0.0
 var pitch := 0.0
@@ -21,6 +25,10 @@ var aiming := false
 var camera: Camera3D
 var pitch_pivot: Node3D
 var arm: SpringArm3D
+## SpringArm3D repositions its *direct* children every frame. The camera hangs
+## off this holder instead, so bob and shake can be written to the camera's own
+## transform without cancelling the pull-back.
+var arm_socket: Node3D
 
 var _bob_time := 0.0
 var _bob_amount := 0.0
@@ -39,10 +47,13 @@ func _ready() -> void:
 	arm = SpringArm3D.new()
 	arm.name = "Arm"
 	arm.spring_length = 0.0
-	arm.margin = 0.28
-	# Only terrain and structures push the camera in.
-	arm.collision_mask = 1
+	arm.margin = 0.42
+	arm.collision_mask = ARM_MASK
 	pitch_pivot.add_child(arm)
+
+	arm_socket = Node3D.new()
+	arm_socket.name = "Socket"
+	arm.add_child(arm_socket)
 
 	camera = Camera3D.new()
 	camera.name = "Camera"
@@ -50,7 +61,7 @@ func _ready() -> void:
 	camera.near = 0.05
 	camera.far = 900.0
 	camera.current = true
-	arm.add_child(camera)
+	arm_socket.add_child(camera)
 	_rng.randomize()
 
 

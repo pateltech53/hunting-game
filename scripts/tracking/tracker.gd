@@ -18,6 +18,7 @@ var player: Player
 var track_manager: TrackManager
 var wildlife: Node
 var sky: SkySystem
+var trail_guide: TrailGuide
 
 var scanning := false
 var listening := false
@@ -100,6 +101,14 @@ func _do_scan() -> void:
 		var who: String = s.name if known else "something"
 		lines.append("%s left by %s, %s" % [
 			_sign_label(sign_entry["kind"]), who, _bearing_text(origin, sign_entry["position"])])
+
+	# Holding the key long enough to finish a scan lights the freshest trail,
+	# which is the difference between knowing an animal passed and being able
+	# to go after it.
+	if trail_guide != null:
+		var trail_line := trail_guide.reveal(origin)
+		if trail_line != "":
+			lines.append(trail_line)
 
 	if lines.is_empty():
 		lines.append("Nothing but leaf litter here.")

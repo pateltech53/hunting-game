@@ -9,6 +9,7 @@ extends Node
 signal fired(from: Vector3, to: Vector3)
 signal ammo_changed(in_magazine: int, reserve: int)
 signal hit_reported(text: String)
+signal aimed_changed(aimed: bool)
 
 const MUZZLE_VELOCITY := 830.0
 const GRAVITY := 9.81
@@ -25,6 +26,9 @@ var active := false
 var in_magazine := MAGAZINE
 var reserve := 25
 var zeroed_at := 150.0          ## metres the sights are zeroed for
+## Shouldering the rifle is its own key, separate from raising the camera, so
+## the two tools never fight over one button.
+var aimed := false
 
 var _cycle := 0.0
 var _reloading := 0.0
@@ -50,6 +54,8 @@ func setup(p: Player, voxel_world: VoxelWorld, director: WildlifeDirector) -> vo
 
 func set_active(value: bool) -> void:
 	active = value
+	if not active:
+		set_aimed(false)
 
 
 func _process(delta: float) -> void:
@@ -61,17 +67,33 @@ func _process(delta: float) -> void:
 	if _flash.light_energy > 0.0:
 		_flash.light_energy = maxf(0.0, _flash.light_energy - delta * 26.0)
 	if not active or player == null or Game.is_paused:
+		if aimed:
+			set_aimed(false)
 		return
-	if Input.is_action_just_pressed("capture") and _cycle <= 0.0 and _reloading <= 0.0:
+	set_aimed(Input.is_action_pressed("aim_rifle"))
+	# Firing from the hip is not a thing here: shoulder it first.
+	if aimed and Input.is_action_just_pressed("capture") \
+			and _cycle <= 0.0 and _reloading <= 0.0:
 		fire()
 	if Input.is_action_just_pressed("reload"):
 		reload()
 
 
+func set_aimed(value: bool) -> void:
+	if aimed == value:
+		return
+	aimed = value
+	if player != null:
+		player.rig.set_aiming(aimed)
+	if aimed:
+		AudioDirector.play("rifle_cycle", -22.0, 1.7)
+	aimed_changed.emit(aimed)
+
+
 func fire() -> void:
 	if in_magazine <= 0:
 		AudioDirector.play("rifle_cycle", -12.0, 1.4)
-		hit_reported.emit("Empty. Press R to reload.")
+		hit_reported.emit("Empty. Press T to reload.")
 		return
 	in_magazine -= 1
 	_cycle = 1.1

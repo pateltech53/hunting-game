@@ -341,7 +341,7 @@ func _leave_tracks() -> void:
 		return
 	_track_distance = 0.0
 	if track_manager.has_method("register_track"):
-		track_manager.register_track(species, global_position, _yaw)
+		track_manager.register_track(species, global_position, _yaw, get_instance_id())
 
 
 func _animate(delta: float) -> void:

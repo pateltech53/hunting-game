@@ -112,7 +112,11 @@ func _build_track_mesh(shape: String) -> ArrayMesh:
 	return mesh
 
 
-func register_track(species: Species, position: Vector3, yaw: float) -> void:
+## `walker` is the instance id of the animal that left the print. Prints from
+## one animal in time order are what the trail guide follows, so without it a
+## herd's overlapping tracks cannot be told apart.
+func register_track(species: Species, position: Vector3, yaw: float,
+		walker: int = 0) -> void:
 	if world == null:
 		return
 	var ground := float(world.surface_height(position.x, position.z))
@@ -136,6 +140,7 @@ func register_track(species: Species, position: Vector3, yaw: float) -> void:
 		"hour": sky.time_of_day if sky != null else 12.0,
 		"stamp": Time.get_ticks_msec(),
 		"slot": cursor,
+		"walker": walker,
 	})
 	if _tracks.size() > MAX_PER_SHAPE * 4:
 		_tracks.remove_at(0)
@@ -196,6 +201,31 @@ func freshest_near(from: Vector3, radius: float) -> Dictionary:
 			best_age = age
 			best = t
 	return best
+
+
+## The prints one animal left, oldest first, for the nearest fresh trail within
+## `radius`. Returns an empty array when there is nothing worth following.
+func trail_near(from: Vector3, radius: float) -> Array:
+	var best_walker := 0
+	var best_stamp := -1
+	for track: Dictionary in _tracks:
+		var walker: int = track.get("walker", 0)
+		if walker == 0:
+			continue
+		if from.distance_to(track["position"]) > radius:
+			continue
+		if int(track["stamp"]) > best_stamp:
+			best_stamp = int(track["stamp"])
+			best_walker = walker
+	if best_walker == 0:
+		return []
+	var out: Array = []
+	for track: Dictionary in _tracks:
+		if int(track.get("walker", 0)) == best_walker:
+			out.append(track)
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a["stamp"]) < int(b["stamp"]))
+	return out
 
 
 func age_label(track: Dictionary) -> String:
