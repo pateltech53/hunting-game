@@ -169,11 +169,11 @@ void fragment() {
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 
 	float fresnel = pow(1.0 - clamp(dot(normalize(VIEW), NORMAL), 0.0, 1.0), 3.0);
-	ALBEDO = mix(tint.rgb, tint.rgb * 1.8 + vec3(0.10, 0.14, 0.16), fresnel);
-	ALPHA = clamp(tint.a + fresnel * 0.35, 0.0, 1.0);
-	ROUGHNESS = 0.06;
+	ALBEDO = mix(tint.rgb, tint.rgb * 1.25 + vec3(0.04, 0.06, 0.08), fresnel);
+	ALPHA = clamp(tint.a + fresnel * 0.18, 0.0, 1.0);
+	ROUGHNESS = 0.14;
 	METALLIC = 0.0;
-	SPECULAR = 0.85;
+	SPECULAR = 0.45;
 }
 """
 	var mat := ShaderMaterial.new()

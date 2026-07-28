@@ -244,8 +244,8 @@ static func _rock(verts: PackedVector3Array, normals: PackedVector3Array,
 		colors: PackedColorArray, biome: Biome, rng: RandomNumberGenerator) -> void:
 	var lumps := rng.randi_range(1, 3)
 	for i in lumps:
-		var offset := Vector3(rng.randf_range(-0.6, 0.6), 0.0, rng.randf_range(-0.6, 0.6))
-		var r := rng.randf_range(0.55, 1.25) / float(1 + i)
+		var offset := Vector3(rng.randf_range(-0.35, 0.35), 0.0, rng.randf_range(-0.35, 0.35))
+		var r := rng.randf_range(0.26, 0.62) / float(1 + i)
 		var shade := 0.85 + rng.randf() * 0.3
 		MeshShapes.add_blob(verts, normals, colors, offset + Vector3(0, r * 0.55, 0), r,
 			Color(biome.rock.r * shade, biome.rock.g * shade, biome.rock.b * shade),
