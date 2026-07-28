@@ -1,8 +1,9 @@
 class_name VoxelMesher
 extends RefCounted
 ## Turns a sparse dictionary of `Vector3i -> Color` into a culled, ambient
-## occluded mesh. Used for trees, village buildings, props and every animal in
-## the game, so they all share one look.
+## occluded mesh. Used for the things that are genuinely built out of blocks:
+## village architecture, and the small field-sign props. Terrain, vegetation
+## and creatures are grown from [MeshShapes] instead.
 ##
 ## Winding follows Godot's clockwise-front convention: for a face with outward
 ## normal n the first triangle satisfies (b - a) x (c - a) == -n.
@@ -118,40 +119,6 @@ static func build_mesh(voxels: Dictionary, origin_offset: Vector3 = Vector3.ZERO
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
-
-
-## The one material every voxel surface in the game uses.
-static func make_material(shaded: bool = true) -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 0.95
-	mat.metallic = 0.0
-	mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED if not shaded \
-		else BaseMaterial3D.SPECULAR_SCHLICK_GGX
-	mat.cull_mode = BaseMaterial3D.CULL_BACK
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	return mat
-
-
-static func make_water_material(color: Color) -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.albedo_color = color
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.roughness = 0.08
-	mat.metallic = 0.25
-	mat.metallic_specular = 0.9
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	return mat
-
-
-static func make_foliage_material() -> StandardMaterial3D:
-	var mat := make_material()
-	# Leaves catch a little light from behind, which matters a lot at dawn.
-	mat.backlight_enabled = true
-	mat.backlight = Color(0.16, 0.20, 0.12)
-	mat.cull_mode = BaseMaterial3D.CULL_BACK
-	return mat
 
 
 ## An axis-aligned box as raw triangle soup, for cheap chunk collision.
