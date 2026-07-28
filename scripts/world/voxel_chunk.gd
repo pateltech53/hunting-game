@@ -49,7 +49,7 @@ func apply(data: Dictionary, want_lights: bool) -> void:
 	if not water_arrays.is_empty():
 		var biome := BiomeLibrary.get_biome(dominant_biome)
 		_water = _make_mesh_instance(water_arrays,
-			VoxelMesher.make_water_material(biome.water_color), local)
+			WorldMaterials.water(biome.water_color), local)
 		_water.name = "Water"
 		_water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(_water)

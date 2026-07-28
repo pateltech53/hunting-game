@@ -56,7 +56,7 @@ func setup(spawn: Vector3, voxel_world: VoxelWorld, hunter: Player, new_role: St
 	cs.position = Vector3(0.0, 0.85, 0.0)
 	add_child(cs)
 
-	_model = VoxelBody.build_humanoid(_palette(), 1.72)
+	_model = CreatureBody.build_humanoid(_palette(), 1.72)
 	add_child(_model)
 	_head = _model.get_node_or_null("Head")
 	for limb: String in ["ArmL", "ArmR", "LegL", "LegR"]:

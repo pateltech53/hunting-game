@@ -70,7 +70,7 @@ func _ready() -> void:
 
 
 func _build_model() -> void:
-	_model = VoxelBody.build_humanoid({
+	_model = CreatureBody.build_humanoid({
 		"skin": Color(0.76, 0.58, 0.44),
 		"shirt": Color(0.30, 0.34, 0.27),
 		"trousers": Color(0.26, 0.24, 0.21),

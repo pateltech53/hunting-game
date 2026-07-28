@@ -131,6 +131,52 @@ func hash01(x: int, z: int, salt: int = 0) -> float:
 	return float(absi(n) % 100000) / 100000.0
 
 
+## Steepness of the ground as rise over run, from the height field's gradient.
+## 1.0 is a 45 degree slope. This is the measure everything uses now that the
+## surface is continuous rather than stacked blocks.
+func gradient_slope(x: float, z: float) -> float:
+	var dhdx := (height_at(x + 1.0, z) - height_at(x - 1.0, z)) * 0.5
+	var dhdz := (height_at(x, z + 1.0) - height_at(x, z - 1.0)) * 0.5
+	return Vector2(dhdx, dhdz).length()
+
+
+## Ground colour for the smooth surface. Everything blends by distance rather
+## than snapping, so a hillside grades from grass through scree into rock.
+func surface_color_smooth(x: float, z: float, h: float, biome: Biome,
+		slope: float) -> Color:
+	var sea := float(SEA_LEVEL)
+	var c: Color
+	if h <= sea - 0.8:
+		# Riverbed and lake floor, darkening with depth.
+		var depth := clampf((sea - h) / 10.0, 0.0, 1.0)
+		c = biome.sand.lerp(biome.dirt, 0.4).lerp(biome.rock.darkened(0.35), depth * 0.7)
+	elif h <= sea + 1.4:
+		c = biome.sand.lerp(biome.grass_b, clampf((h - sea) / 1.4, 0.0, 1.0) * 0.55)
+	else:
+		var v := _variation.get_noise_2d(x, z) * 0.5 + 0.5
+		c = biome.grass_b.lerp(biome.grass_a, v)
+		# Grass cannot hold on a steep face, so rock shows through. Mottle the
+		# rock heavily - an unbroken slab of one colour is what made cliffs look
+		# like draped fabric.
+		var rock_t := smoothstep(0.45, 1.25, slope)
+		if rock_t > 0.001:
+			var strata := _variation.get_noise_2d(x * 0.7, z * 0.7 + h * 1.6) * 0.5 + 0.5
+			var rock := biome.rock.darkened(0.10).lerp(biome.dirt, strata * 0.45)
+			rock = rock.lerp(biome.rock.lightened(0.10),
+				_variation.get_noise_2d(x * 3.1, z * 3.1) * 0.5 + 0.5)
+			c = c.lerp(rock, rock_t)
+		if h > biome.snow_line:
+			var t := clampf((h - biome.snow_line) / 14.0, 0.0, 1.0)
+			# Snow settles on flat ground and slides off anything steep.
+			t *= clampf(1.0 - slope * 0.8, 0.1, 1.0)
+			c = c.lerp(biome.snow, t)
+	# Fine breakup so large faces are never a flat wash of one colour.
+	var grain := _variation.get_noise_2d(x * 5.7, z * 5.7) * 0.045
+	grain += _variation.get_noise_2d(x * 0.9, z * 0.9) * 0.035
+	return Color(clampf(c.r + grain, 0.0, 1.0), clampf(c.g + grain, 0.0, 1.0),
+		clampf(c.b + grain, 0.0, 1.0))
+
+
 func surface_color(x: int, z: int, h: int, biome: Biome, slope: float) -> Color:
 	var c: Color
 	if h <= SEA_LEVEL - 1:
@@ -176,10 +222,12 @@ func column(x: int, z: int) -> Dictionary:
 # -------------------------------------------------------------- flora queries
 
 ## Returns the tree kind for this column, or "" for none.
-func tree_at(x: int, z: int, biome: Biome, h: int, slope: float) -> String:
-	if h <= SEA_LEVEL or slope >= 3.0:
+## [param slope] is a gradient, so 0.9 is roughly a 42 degree hillside - about
+## the limit of where a tree will hold.
+func tree_at(x: int, z: int, biome: Biome, h: float, slope: float) -> String:
+	if h <= float(SEA_LEVEL) + 0.4 or slope >= 0.9:
 		return ""
-	if float(h) > biome.snow_line + 8.0:
+	if h > biome.snow_line + 8.0:
 		return ""
 	# Forest noise clumps trees into stands with real clearings between them.
 	# The multiplier is kept modest on purpose: push it and the canopies merge
@@ -195,21 +243,21 @@ func tree_at(x: int, z: int, biome: Biome, h: int, slope: float) -> String:
 	return kinds[idx]
 
 
-func rock_at(x: int, z: int, biome: Biome, h: int) -> bool:
-	if h <= SEA_LEVEL:
+func rock_at(x: int, z: int, biome: Biome, h: float) -> bool:
+	if h <= float(SEA_LEVEL) + 0.2:
 		return false
 	return hash01(x, z, 21) < biome.rock_density
 
 
-func bush_at(x: int, z: int, biome: Biome, h: int, slope: float) -> bool:
-	if h <= SEA_LEVEL or slope >= 3.0:
+func bush_at(x: int, z: int, biome: Biome, h: float, slope: float) -> bool:
+	if h <= float(SEA_LEVEL) + 0.4 or slope >= 1.0:
 		return false
 	var clump := _forest.get_noise_2d(float(x) * 1.7, float(z) * 1.7) * 0.5 + 0.5
 	return hash01(x, z, 31) < biome.bush_density * (0.4 + clump)
 
 
-func flower_at(x: int, z: int, biome: Biome, h: int, slope: float) -> int:
-	if biome.flower_colors.is_empty() or h <= SEA_LEVEL or slope >= 2.0:
+func flower_at(x: int, z: int, biome: Biome, h: float, slope: float) -> int:
+	if biome.flower_colors.is_empty() or h <= float(SEA_LEVEL) + 0.4 or slope >= 0.7:
 		return -1
 	if hash01(x, z, 41) > biome.flower_density:
 		return -1
@@ -230,19 +278,19 @@ func find_flat_ground(around: Vector2, radius: float, tries: int = 90) -> Vector
 		var r := radius * sqrt(hash01(int(around.x), int(around.y) + i, 56))
 		var px := int(around.x + cos(a) * r)
 		var pz := int(around.y + sin(a) * r)
-		var h := height_i(px, pz)
-		if h <= SEA_LEVEL + 1:
+		var h := height_at(float(px), float(pz))
+		if h <= float(SEA_LEVEL) + 1.0:
 			continue
-		var slope := slope_at(px, pz, h)
-		var score := 10.0 - slope * 3.0 - absf(float(h) - float(SEA_LEVEL) - 8.0) * 0.05
-		var biome := BiomeLibrary.get_biome(biome_from_height(float(px), float(pz), float(h)))
+		var slope := gradient_slope(float(px), float(pz))
+		var score := 10.0 - slope * 9.0 - absf(h - float(SEA_LEVEL) - 8.0) * 0.05
+		var biome := BiomeLibrary.get_biome(biome_from_height(float(px), float(pz), h))
 		var blocked := 0
 		for offset: Vector2i in [Vector2i(0, 0), Vector2i(3, 0), Vector2i(-3, 0),
 				Vector2i(0, 3), Vector2i(0, -3), Vector2i(2, 2), Vector2i(-2, -2)]:
 			var ox := px + offset.x
 			var oz := pz + offset.y
-			var oh := height_i(ox, oz)
-			var oslope := slope_at(ox, oz, oh)
+			var oh := height_at(float(ox), float(oz))
+			var oslope := gradient_slope(float(ox), float(oz))
 			# A bush you are standing inside fills the whole screen just as
 			# effectively as a tree, so every prop counts here.
 			if tree_at(ox, oz, biome, oh, oslope) != "":
@@ -252,5 +300,5 @@ func find_flat_ground(around: Vector2, radius: float, tries: int = 90) -> Vector
 		score -= float(blocked) * 2.0
 		if score > best_score:
 			best_score = score
-			best = Vector3(float(px) + 0.5, float(h) + 1.0, float(pz) + 0.5)
+			best = Vector3(float(px) + 0.5, h, float(pz) + 0.5)
 	return best

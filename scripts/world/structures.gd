@@ -334,7 +334,7 @@ static func village_site(gen: TerrainGenerator, cell_x: int, cell_z: int) -> Dic
 	var biome := BiomeLibrary.get_biome(biome_id)
 	if gen.hash01(cell_x, cell_z, 73) > biome.village_chance:
 		return {}
-	if gen.slope_at(int(cx), int(cz), h) > 2.0:
+	if gen.gradient_slope(cx, cz) > 0.45:
 		return {}
 	var kind := "hamlet"
 	var roll := gen.hash01(cell_x, cell_z, 74)
@@ -517,9 +517,11 @@ static func _stamp_cabin(gen: TerrainGenerator, out: Dictionary, bmin: Vector2i,
 		for dz in range(-hd, hd + 1):
 			var x := cx + dx
 			var z := cz + dz
-			# Stone plinth down to the ground.
+			# Stone plinth down to the ground. The surface is continuous now, so
+			# reach a little deeper than the rounded height to avoid daylight
+			# under the footings on sloping ground.
 			var ground := gen.height_i(x, z)
-			for y in range(ground - 1, floor_y):
+			for y in range(ground - 3, floor_y):
 				put(out, bmin, bmax, x, y, z, STONE_DARK)
 			put(out, bmin, bmax, x, floor_y - 1, z, WOOD_DARK)
 			var edge: bool = absi(dx) == hw or absi(dz) == hd

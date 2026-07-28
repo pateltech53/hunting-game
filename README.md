@@ -1,6 +1,7 @@
 # Wildlight
 
-A voxel photography and hunting game, built in **Godot 4.3** with GDScript.
+A procedurally generated photography and hunting game, built in **Godot 4.3**
+with GDScript.
 
 You are a naturalist with a camera and a rifle in procedurally generated
 wilderness. You scan the ground for prints, stand still and listen for calls,
@@ -8,9 +9,10 @@ work out where an animal went — and then you photograph it. **The photograph i
 what enters it into your Discovery Book**, and the first one you ever take of a
 species becomes the cover of its page for good.
 
-Everything is generated: the terrain, the animals, the villages, the weather —
-and every sound in the game, which is synthesised at runtime rather than shipped
-as audio files. The repository contains no binary assets.
+Everything is generated: the land, the animals, the villages, the weather — and
+every sound in the game, which is synthesised at runtime rather than shipped as
+audio files. The repository contains no binary assets, no meshes and no
+textures. Every triangle you see is built by code at load time.
 
 ---
 
@@ -52,6 +54,22 @@ backdrop.
   precipitation, wildlife activity and how well rain masks your approach.
   Storms flash and the thunder arrives late, by distance.
 - Village lanterns and cabin hearths come on after dark.
+
+## Atmosphere
+
+- The sky is a custom shader: a gradient with **real drifting cloud layers**
+  whose coverage is driven by the weather system, plus a sun disc, horizon haze
+  and stars. Godot caches its radiance map, so the clouds also tint the ambient
+  light landing on the ground.
+- **Wind is simulated and visible.** The weather system publishes a wind vector
+  that wanders over time; vegetation shaders bend grass, bushes and tree crowns
+  along it, and the water shader gets choppier as it rises. That same vector is
+  what carries your scent to an animal's nose, so what you can see the wind
+  doing is what the wildlife is reacting to.
+- Ground, bark and leaves go **wet after rain** and dry out slowly.
+- Height fog pools in the valleys overnight and burns off through the morning;
+  aerial perspective separates far ridges; on desktop, volumetric fog turns a
+  low sun into shafts through the canopy.
 
 ---
 
@@ -266,20 +284,26 @@ tools/         headless validator
 
 Some notes on the implementation:
 
-- **Terrain** is a chunked height field meshed on `WorkerThreadPool` threads
-  with corner ambient occlusion baked into vertex colours. Everything about a
-  world is a pure function of its seed and a coordinate, so chunks can be built
-  in any order and still agree, and the game can answer "how high is the ground
-  there" for places that have never been meshed.
-- **Trees are instanced, not merged.** Prop meshes are built once per
-  (biome, kind, variant) and drawn with `MultiMesh`, which is what makes a
-  forest affordable. A tree's trunk blocks movement and bullets; its canopy only
-  blocks line of sight.
+- **Terrain is a continuous surface** sampled from the height field on
+  `WorkerThreadPool` threads, with per-vertex normals taken from its gradient.
+  Gentle ground uses those smooth normals so hills roll; steep ground blends
+  toward flat face normals so a cliff breaks into rocky facets instead of a
+  draped sheet. Everything about a world is a pure function of its seed and a
+  coordinate, so chunks can be built in any order and still agree, and the game
+  can answer "how high is the ground there" for places that have never been
+  meshed.
+- **Trees are instanced, not merged.** Each is grown once per
+  (biome, kind, variant) from tapered limbs and faceted blobs, then drawn with
+  `MultiMesh` — one instance transform per tree. A trunk blocks movement and
+  bullets; the crown only blocks line of sight, which is what lets you see an
+  animal through a stand of trees.
 - **Animals move against the height field** rather than through the physics
   solver, so a valley full of deer costs almost nothing. Their collision shape
   exists purely so bullets and autofocus have something to hit.
-- **Everything is voxels from one mesher** — terrain, trees, buildings, animals,
-  villagers, the player — so it all shares a look.
+- **Creatures are built from the same primitives as the trees** — limbs and
+  blobs, flat shaded — because they are the subject of every photograph and
+  have to hold up under a 400mm lens. Buildings stay on a one-metre voxel grid,
+  where blockiness reads as carpentry rather than as a compromise.
 - **Falling through the world is impossible**: the player is clamped to the
   terrain height field, which is defined everywhere even where nothing has
   streamed in yet.

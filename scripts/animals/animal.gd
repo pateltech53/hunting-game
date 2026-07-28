@@ -84,7 +84,7 @@ func setup(s: Species, spawn: Vector3, voxel_world: VoxelWorld, sky_system: SkyS
 	_collider.position = Vector3(0.0, capsule.height * 0.5, 0.0)
 	add_child(_collider)
 
-	_model = VoxelBody.build(species)
+	_model = CreatureBody.build(species)
 	add_child(_model)
 	_cache_parts()
 	_pick_new_target()

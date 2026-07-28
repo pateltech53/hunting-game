@@ -1,32 +1,30 @@
 class_name PropMeshes
 extends RefCounted
-## Cache of instanced prop meshes. A forest is millions of voxels, so trees are
-## built once per (biome, kind, variant) and drawn with MultiMesh rather than
-## merged into the chunk mesh.
+## Cache of instanced prop meshes. A forest is far too many triangles to merge
+## into chunk geometry, so trees are built once per (biome, kind, variant) and
+## drawn with MultiMesh.
 
-const VARIANTS := 3
+const VARIANTS := 4
 
-## Voxel models are authored around column (0, y, 0). Shifting by half a block
-## puts that column's centre on the instance origin, so a trunk stands where
-## the game says it stands - and so its collider lines up with it.
+## Voxel models (buildings, animals) are authored around column (0, y, 0).
+## Shifting by half a block puts that column's centre on the instance origin.
 const MODEL_ORIGIN := Vector3(0.5, 0.0, 0.5)
 
 static var _mesh_cache: Dictionary = {}
 static var _bounds_cache: Dictionary = {}
-static var _material: StandardMaterial3D = null
-static var _foliage_material: StandardMaterial3D = null
+static var _grass_mesh: ArrayMesh = null
 
 
 static func material() -> StandardMaterial3D:
-	if _material == null:
-		_material = VoxelMesher.make_material()
-	return _material
+	return WorldMaterials.terrain()
 
 
-static func foliage_material() -> StandardMaterial3D:
-	if _foliage_material == null:
-		_foliage_material = VoxelMesher.make_foliage_material()
-	return _foliage_material
+static func foliage_material() -> ShaderMaterial:
+	return WorldMaterials.foliage()
+
+
+static func grass_material() -> ShaderMaterial:
+	return WorldMaterials.grass()
 
 
 static func key(biome_id: String, kind: String, variant: int) -> String:
@@ -37,13 +35,10 @@ static func get_mesh(biome_id: String, kind: String, variant: int) -> ArrayMesh:
 	var k := key(biome_id, kind, variant)
 	if _mesh_cache.has(k):
 		return _mesh_cache[k]
-	var biome := BiomeLibrary.get_biome(biome_id)
-	var voxels := Structures.build_prop_voxels(kind, biome, variant)
-	# Centre horizontally, keep the base of the model at y = 0.
-	var mesh := VoxelMesher.build_mesh(voxels, MODEL_ORIGIN, true, 1.0)
-	_mesh_cache[k] = mesh
-	_bounds_cache[k] = Structures.prop_bounds(voxels, kind)
-	return mesh
+	var built := FloraFactory.build(kind, BiomeLibrary.get_biome(biome_id), variant)
+	_mesh_cache[k] = built["mesh"]
+	_bounds_cache[k] = built
+	return built["mesh"]
 
 
 static func get_bounds(biome_id: String, kind: String, variant: int) -> Dictionary:
@@ -54,59 +49,71 @@ static func get_bounds(biome_id: String, kind: String, variant: int) -> Dictiona
 		"has_canopy": false, "has_solid": false})
 
 
+## Whether this prop should be drawn with the swaying vegetation shader.
 static func is_foliage(kind: String) -> bool:
-	return kind in ["broadleaf", "pine", "birch", "willow", "bush", "cactus"]
+	return kind in ["broadleaf", "pine", "birch", "willow", "bush", "cactus", "dead"]
 
 
-## A tuft of grass: two crossed quads, coloured per instance.
+## A tuft of grass: a few tapered blades leaning in different directions, so it
+## reads as grass rather than a pair of crossed cards.
 static func grass_mesh() -> ArrayMesh:
-	if _mesh_cache.has("__grass"):
-		return _mesh_cache["__grass"]
+	if _grass_mesh != null:
+		return _grass_mesh
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
-	var h := 0.55
-	var w := 0.30
-	for angle: float in [0.0, PI * 0.5]:
-		var dir := Vector3(cos(angle), 0.0, sin(angle)) * w
-		var n := Vector3(-sin(angle), 0.35, cos(angle)).normalized()
-		var quad := [
-			-dir, dir, dir + Vector3(0, h, 0), -dir + Vector3(0, h, 0),
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7781
+
+	for blade in 4:
+		var angle := TAU * float(blade) / 4.0 + rng.randf_range(-0.4, 0.4)
+		var lean := rng.randf_range(0.12, 0.34)
+		var height := rng.randf_range(0.34, 0.62)
+		var width := rng.randf_range(0.045, 0.075)
+		var dir := Vector3(cos(angle), 0.0, sin(angle))
+		var side := Vector3(-dir.z, 0.0, dir.x)
+		var tip := dir * lean + Vector3(0.0, height, 0.0)
+		var mid := dir * lean * 0.35 + Vector3(0.0, height * 0.55, 0.0)
+		var normal := side.cross(tip.normalized()).normalized()
+		if normal.length_squared() < 0.001:
+			normal = Vector3.UP
+
+		# Two segments, tapering to a point.
+		var quads := [
+			[-side * width, side * width, mid + side * width * 0.6,
+				mid - side * width * 0.6, 0.55, 0.8],
+			[mid - side * width * 0.6, mid + side * width * 0.6, tip, tip, 0.8, 1.0],
 		]
-		for tri: Array in [[0, 1, 2], [0, 2, 3], [2, 1, 0], [3, 2, 0]]:
-			for k: int in tri:
-				verts.push_back(quad[k])
-				normals.push_back(n)
-				# Darker at the root, brighter at the tip.
-				var shade: float = 0.65 if k < 2 else 1.0
-				colors.push_back(Color(shade, shade, shade, 1.0))
+		for q: Array in quads:
+			var shade_lo: float = q[4]
+			var shade_hi: float = q[5]
+			var a: Vector3 = q[0]
+			var b: Vector3 = q[1]
+			var c: Vector3 = q[2]
+			var d: Vector3 = q[3]
+			for tri: Array in [[a, b, c, shade_lo, shade_lo, shade_hi],
+					[a, c, d, shade_lo, shade_hi, shade_hi]]:
+				for k in 3:
+					verts.push_back(tri[k])
+					normals.push_back(normal)
+					var s: float = tri[3 + k]
+					colors.push_back(Color(s, s, s, 1.0))
+	var mesh := ArrayMesh.new()
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_COLOR] = colors
-	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	_mesh_cache["__grass"] = mesh
+	_grass_mesh = mesh
 	return mesh
 
 
-static var _grass_material: StandardMaterial3D = null
-
-
-static func grass_material() -> StandardMaterial3D:
-	if _grass_material == null:
-		_grass_material = VoxelMesher.make_material()
-		_grass_material.cull_mode = BaseMaterial3D.CULL_DISABLED
-		_grass_material.backlight_enabled = true
-		_grass_material.backlight = Color(0.22, 0.26, 0.14)
-	return _grass_material
-
-
-## Builds every mesh a world can ask for, on the main thread, before chunk
+## Builds every mesh a world can ask for, on the main thread, before the chunk
 ## workers start. The cache is read from several threads afterwards, so it must
 ## never be written to again while generation is running.
 static func warm_cache() -> void:
+	WorldMaterials.ensure_globals()
 	grass_mesh()
 	grass_material()
 	material()
@@ -123,3 +130,4 @@ static func warm_cache() -> void:
 static func clear_cache() -> void:
 	_mesh_cache.clear()
 	_bounds_cache.clear()
+	_grass_mesh = null

@@ -210,8 +210,10 @@ func set_night_lights(on: bool) -> void:
 
 # ------------------------------------------------------------------- queries
 
-func surface_height(x: float, z: float) -> int:
-	return gen.height_i(int(floor(x)), int(floor(z)))
+## Height of the ground surface, continuous. Callers stand things on this, so
+## it has to be the same surface the mesher draws rather than a rounded block.
+func surface_height(x: float, z: float) -> float:
+	return gen.height_at(x, z)
 
 
 func ground_point(x: float, z: float) -> Vector3:

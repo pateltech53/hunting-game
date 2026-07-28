@@ -51,11 +51,14 @@ var _snow: GPUParticles3D
 var _thunder_timer := 0.0
 var _pending_thunder := -1.0
 var _biome_id := ""
+var _wetness := 0.0
+var _base_wind_angle := 0.0
 
 
 func setup(sky_system: SkySystem, seed_value: int) -> void:
 	sky = sky_system
 	_rng.seed = seed_value + 8080
+	_base_wind_angle = _rng.randf_range(-PI, PI)
 	_next_change = _rng.randf_range(180.0, 420.0)
 	_build_particles()
 	set_weather(current, true)
@@ -137,6 +140,18 @@ func _process(delta: float) -> void:
 	var amount_scale := clampf(_precip, 0.0, 1.0)
 	_rain.amount_ratio = amount_scale
 	_snow.amount_ratio = amount_scale
+
+	# Push the wind into the shaders so vegetation and water actually respond
+	# to the weather rather than the weather being a HUD label.
+	var biome_wind: float = 0.4
+	if _biome_id != "":
+		biome_wind = BiomeLibrary.get_biome(_biome_id).wind_strength
+	WorldMaterials.set_wind(wind_direction(), clampf(_wind * 0.7 + biome_wind * 0.5,
+		0.05, 1.6))
+	# Ground and bark stay wet for a while after the rain stops.
+	_wetness = move_toward(_wetness, clampf(_precip * 1.4, 0.0, 1.0),
+		delta * (0.35 if _precip > 0.05 else 0.05))
+	WorldMaterials.set_wetness(_wetness)
 
 	_update_audio()
 	_update_storm(delta)
@@ -224,9 +239,12 @@ func wind() -> float:
 	return _wind
 
 
-## Wind bearing, used by the scent model - animals downwind smell you first.
+## Wind bearing, used by the scent model - animals downwind smell you first -
+## and by the vegetation shaders. It wanders slowly rather than sitting still,
+## so a stalk that works now may not work in ten minutes.
 func wind_direction() -> Vector3:
-	var angle := float(_rng.seed % 360) * 0.0174533
+	var t := float(Time.get_ticks_msec()) * 0.00002
+	var angle := _base_wind_angle + sin(t) * 0.7 + sin(t * 0.37) * 0.35
 	return Vector3(cos(angle), 0.0, sin(angle))
 
 

@@ -42,8 +42,9 @@ var exposure_compensation := 1.0
 var _biome_ref: Biome = null
 var _last_hour := -1
 var _phase := ""
-var _sky_material: ProceduralSkyMaterial
+var _sky_material: ShaderMaterial
 var _flash := 0.0
+var _cloud_drift := 0.0
 
 
 func _ready() -> void:
@@ -66,6 +67,8 @@ func _build_lights() -> void:
 	sun.shadow_normal_bias = 1.4
 	sun.light_angular_distance = 0.55
 	sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
+	# Drives the shafts of light through volumetric fog and tree canopies.
+	sun.light_volumetric_fog_energy = 1.4
 	add_child(sun)
 
 	moon = DirectionalLight3D.new()
@@ -78,16 +81,14 @@ func _build_lights() -> void:
 
 
 func _build_environment() -> void:
-	_sky_material = ProceduralSkyMaterial.new()
-	_sky_material.sun_angle_max = 8.0
-	_sky_material.sun_curve = 0.08
-	_sky_material.sky_energy_multiplier = 1.0
-	_sky_material.sky_cover = _make_star_texture()
-	_sky_material.sky_cover_modulate = Color(0, 0, 0, 1)
+	_sky_material = SkyShader.build()
 
 	var sky := Sky.new()
 	sky.sky_material = _sky_material
 	sky.radiance_size = Sky.RADIANCE_SIZE_128
+	# The sky changes slowly, so spread the radiance update over frames rather
+	# than recomputing the whole cubemap every time the sun moves a fraction.
+	sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL
 
 	environment = Environment.new()
 	environment.background_mode = Environment.BG_SKY
@@ -103,9 +104,14 @@ func _build_environment() -> void:
 
 	environment.fog_enabled = true
 	environment.fog_mode = Environment.FOG_MODE_EXPONENTIAL
-	environment.fog_sun_scatter = 0.35
-	environment.fog_aerial_perspective = 0.6
-	environment.fog_sky_affect = 0.7
+	# Scatter puts a glow around the sun when you shoot into it through haze.
+	environment.fog_sun_scatter = 0.55
+	# Aerial perspective is what makes a far ridge read as far away.
+	environment.fog_aerial_perspective = 0.85
+	environment.fog_sky_affect = 0.55
+	# Height fog pools in the valleys and burns off as you climb.
+	environment.fog_height = float(TerrainGenerator.SEA_LEVEL) + 7.0
+	environment.fog_height_density = 0.03
 
 	environment.glow_enabled = Settings.quality >= Settings.Quality.MEDIUM
 	environment.glow_intensity = 0.35
@@ -130,33 +136,6 @@ func _build_environment() -> void:
 	add_child(world_env)
 
 
-## A panorama of stars, generated once. Fades in after dusk.
-func _make_star_texture() -> ImageTexture:
-	var w := 1024
-	var h := 512
-	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0))
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 4242
-	for i in 1400:
-		var x := rng.randi_range(0, w - 1)
-		var y := rng.randi_range(0, h - 1)
-		# Thin out stars near the poles so the panorama does not clump.
-		if rng.randf() > sin(PI * float(y) / float(h)) * 0.9 + 0.1:
-			continue
-		var b := rng.randf_range(0.35, 1.0)
-		var tint := Color(1.0, 1.0, 1.0).lerp(
-			Color(0.72, 0.80, 1.0) if rng.randf() < 0.5 else Color(1.0, 0.86, 0.72), 0.4)
-		img.set_pixel(x, y, Color(tint.r * b, tint.g * b, tint.b * b, 1.0))
-		if b > 0.85:
-			for o: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-				var px := clampi(x + o.x, 0, w - 1)
-				var py := clampi(y + o.y, 0, h - 1)
-				img.set_pixel(px, py, Color(tint.r * b * 0.4, tint.g * b * 0.4,
-					tint.b * b * 0.4, 1.0))
-	return ImageTexture.create_from_image(img)
-
-
 func _process(delta: float) -> void:
 	if not time_frozen and day_length_minutes > 0.0:
 		time_of_day += delta * (24.0 / (day_length_minutes * 60.0))
@@ -164,6 +143,7 @@ func _process(delta: float) -> void:
 			time_of_day -= 24.0
 	if _flash > 0.0:
 		_flash = maxf(0.0, _flash - delta * 3.5)
+	_cloud_drift += delta * (0.0016 + wind_strength * 0.0075)
 	_apply(delta)
 
 	var hour := int(floor(time_of_day))
@@ -325,12 +305,28 @@ func _apply(_delta: float) -> void:
 	top = top.lerp(grey, cloud_cover * 0.7)
 	horizon = horizon.lerp(grey.lightened(0.1), cloud_cover * 0.7)
 
-	_sky_material.sky_top_color = night_top.lerp(top, day)
-	_sky_material.sky_horizon_color = night_horizon.lerp(horizon, day)
-	_sky_material.ground_horizon_color = night_horizon.lerp(biome.ground_horizon, day)
-	_sky_material.ground_bottom_color = night_top.lerp(biome.ground_horizon.darkened(0.4), day)
-	_sky_material.sky_energy_multiplier = lerpf(0.12, 1.0, day)
-	_sky_material.sky_cover_modulate = Color(1, 1, 1, 1) * clampf(night * 1.2 - cloud_cover, 0.0, 1.0)
+	_sky_material.set_shader_parameter("top_color", night_top.lerp(top, day))
+	_sky_material.set_shader_parameter("horizon_color", night_horizon.lerp(horizon, day))
+	_sky_material.set_shader_parameter("ground_color",
+		night_top.lerp(biome.ground_horizon, day))
+	_sky_material.set_shader_parameter("sun_tint", col)
+	_sky_material.set_shader_parameter("exposure", lerpf(0.14, 1.0, day))
+	_sky_material.set_shader_parameter("cloud_cover", cloud_cover)
+	_sky_material.set_shader_parameter("cloud_sharpness",
+		lerpf(2.6, 1.1, cloud_cover))
+	_sky_material.set_shader_parameter("haze", clampf(0.25 + precipitation * 0.5
+		+ cloud_cover * 0.25, 0.0, 1.0))
+	_sky_material.set_shader_parameter("star_amount", clampf(night * 1.3 - cloud_cover,
+		0.0, 1.0))
+	_sky_material.set_shader_parameter("sun_disc", clampf(1.0 - cloud_cover * 1.1,
+		0.0, 1.0))
+	_sky_material.set_shader_parameter("wind_offset", _cloud_drift)
+	# Cloud bellies pick up the colour of the sun, which is most of what makes
+	# a sunrise read as a sunrise.
+	_sky_material.set_shader_parameter("cloud_lit",
+		Color(1.0, 0.97, 0.94).lerp(col, 0.55) * lerpf(0.25, 1.0, day))
+	_sky_material.set_shader_parameter("cloud_shadow",
+		Color(0.42, 0.45, 0.52).lerp(col.darkened(0.4), 0.35) * lerpf(0.18, 1.0, day))
 
 	# --- ambient and exposure ---------------------------------------------
 	# Sky ambient is the only light reaching anything the sun cannot see, so it
@@ -347,6 +343,10 @@ func _apply(_delta: float) -> void:
 	environment.fog_density = biome.fog_density * fog_multiplier * dawn_boost \
 		* lerpf(1.0, 1.8, precipitation)
 	environment.fog_light_energy = lerpf(0.1, 1.0, day)
+	# Mist gathers in the low ground overnight and lifts through the morning.
+	var still_air := clampf(1.0 - absf(elev - 3.0) / 14.0, 0.0, 1.0)
+	environment.fog_height_density = clampf(
+		0.02 + still_air * 0.10 + precipitation * 0.05, 0.0, 0.30) * fog_multiplier
 	if environment.volumetric_fog_enabled:
 		environment.volumetric_fog_density = clampf(
 			0.006 + biome.fog_density * 3.0 * fog_multiplier, 0.0, 0.09)
