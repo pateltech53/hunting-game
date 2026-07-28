@@ -100,7 +100,8 @@ func _on_view_mode_changed(third_person: bool) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not input_enabled or Game.is_paused:
 		return
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if event is InputEventMouseMotion and Settings.mouse_look_enabled() \
+			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		rig.apply_look(event.relative.x, event.relative.y)
 
 
@@ -195,14 +196,14 @@ func _handle_look_stick(delta: float) -> void:
 	var stick := Vector2(
 		Input.get_joy_axis(0, JOY_AXIS_RIGHT_X),
 		Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y))
-	if stick.length() > 0.14:
+	if Settings.pad_look_enabled() and stick.length() > 0.14:
 		var scale := Settings.gamepad_sensitivity * 220.0 * delta
 		rig.apply_look(stick.x * scale, stick.y * scale)
 
 	# Arrow keys. The whole game has to be playable on a laptop with no mouse,
 	# so this is a first-class way to aim rather than an accessibility bolt-on.
 	var keys := Input.get_vector("look_left", "look_right", "look_up", "look_down")
-	if keys != Vector2.ZERO:
+	if Settings.key_look_enabled() and keys != Vector2.ZERO:
 		# apply_look multiplies by look sensitivity, which is tuned for mouse
 		# pixels; divide it back out so the turn rate here is a real angle.
 		var per_second := deg_to_rad(Settings.KEY_LOOK_SPEED) * delta

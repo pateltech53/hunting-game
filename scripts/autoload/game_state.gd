@@ -114,10 +114,7 @@ func set_paused(paused: bool) -> void:
 	is_paused = paused
 	get_tree().paused = paused
 	pause_toggled.emit(paused)
-	if paused:
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	elif in_game and Settings.scheme != Settings.Scheme.TOUCH:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	Settings.apply_mouse_mode()
 
 
 func notify(text: String, kind: String = "info") -> void:

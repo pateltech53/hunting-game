@@ -19,6 +19,7 @@ var viewfinder: Viewfinder
 
 var _root: Control
 var _conditions: Label
+var _purse: Label
 var _location: Label
 var _contract_box: VBoxContainer
 var _readout: RichTextLabel
@@ -96,8 +97,10 @@ func _build_conditions() -> void:
 	_conditions = UITheme.label("--:--", 20, UITheme.ACCENT)
 	_location = UITheme.label("", 13, UITheme.INK_DIM)
 	_location.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_purse = UITheme.label("", 12, UITheme.ACCENT_DIM)
 	box.add_child(_conditions)
 	box.add_child(_location)
+	box.add_child(_purse)
 	panel.add_child(box)
 	_root.add_child(panel)
 
@@ -221,6 +224,12 @@ func _update_conditions() -> void:
 		return
 	var phase := sky.light_phase()
 	_conditions.text = "%s   %s" % [sky.clock_string(), phase]
+	# Money in hand, and what is still waiting to be sold - the reminder that
+	# a good frame is only paid for once it reaches a settlement.
+	var pending := SaveSystem.unsold_count()
+	_purse.text = "$%d" % Bank.funds() if pending == 0 else \
+		"$%d   ·   %d frame%s unsold ($%d)" % [Bank.funds(), pending,
+			"" if pending == 1 else "s", SaveSystem.unsold_total()]
 	_conditions.add_theme_color_override("font_color",
 		UITheme.ACCENT if phase in ["golden hour", "blue hour"] else UITheme.INK)
 	var biome := BiomeLibrary.display_name(player.current_biome())
@@ -257,8 +266,35 @@ func _update_readout() -> void:
 	]
 
 
+## Feeds the sight what it needs to be honest: whether the rifle is up, whether
+## there is a round ready, how steady the player is, and the range to whatever
+## is under the crosshair.
+func _update_rifle_sight() -> void:
+	viewfinder.rifle_active = rifle != null and rifle.active
+	if not viewfinder.rifle_active:
+		return
+	viewfinder.rifle_aimed = rifle.aimed
+	viewfinder.rifle_ready = rifle.in_magazine > 0
+	# Sway comes off stamina: a winded hunter cannot hold a sight still.
+	viewfinder.rifle_sway = clampf(1.0 - player.stamina, 0.0, 1.0) \
+		* (0.4 if player.crouched else 1.0)
+	viewfinder.rifle_range = 0.0
+	if not rifle.aimed:
+		return
+	var cam := player.camera()
+	var from := cam.global_position
+	var to := from + (-cam.global_transform.basis.z) * Rifle.MAX_RANGE
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	query.collision_mask = Rifle.HIT_MASK
+	query.exclude = [player.get_rid()]
+	var hit := player.get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty():
+		viewfinder.rifle_range = from.distance_to(hit["position"])
+
+
 func _update_viewfinder() -> void:
 	viewfinder.player_yaw = player.rig.yaw
+	_update_rifle_sight()
 	if tracker != null:
 		viewfinder.listening = tracker.listening
 		viewfinder.listen_contacts = tracker.contacts

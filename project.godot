@@ -20,6 +20,7 @@ Settings="*res://scripts/autoload/settings_manager.gd"
 SaveSystem="*res://scripts/autoload/save_system.gd"
 Codex="*res://scripts/autoload/codex.gd"
 AudioDirector="*res://scripts/autoload/audio_director.gd"
+Bank="*res://scripts/economy/economy.gd"
 Game="*res://scripts/autoload/game_state.gd"
 
 [display]

@@ -15,6 +15,14 @@ var listening := false
 var scan_charge := 0.0
 var player_yaw := 0.0
 
+## Rifle state, so the sight can show what the shot is actually going to do.
+var rifle_active := false
+var rifle_aimed := false
+var rifle_ready := true           ## false while cycling the bolt or reloading
+var rifle_sway := 0.0             ## 0 steady .. 1 badly winded
+var rifle_range := 0.0            ## metres to whatever is under the sight
+var _aim_blend := 0.0
+
 var _histogram_timer := 0.0
 var _level_angle := 0.0
 
@@ -29,6 +37,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	var want: float = 1.0 if (camera != null and camera.raised) else 0.0
 	raised = move_toward(raised, want, delta * 6.0)
+	_aim_blend = move_toward(_aim_blend, 1.0 if rifle_aimed else 0.0, delta * 7.0)
 	if camera != null and camera.raised and Settings.show_histogram:
 		_histogram_timer -= delta
 		if _histogram_timer <= 0.0:
@@ -71,7 +80,10 @@ func _sample_histogram() -> void:
 func _draw() -> void:
 	draw_field_senses(player_yaw, listen_contacts, scan_charge, listening)
 	if raised <= 0.01 or camera == null:
-		_draw_hipfire_reticle()
+		if rifle_active:
+			_draw_rifle_sight()
+		else:
+			_draw_hipfire_reticle()
 		return
 	var rect := get_rect()
 	var alpha := raised
@@ -167,6 +179,41 @@ func _draw() -> void:
 		(UITheme.WARN if absf(err) < 1.5 else UITheme.BAD)
 	needle_col.a = alpha
 	draw_line(Vector2(needle_x, mo.y - 11.0), Vector2(needle_x, mo.y + 14.0), needle_col, 2.5)
+
+
+## The rifle sight. Four arms around a centre dot, opening up when the rifle
+## is not shouldered and closing to a fine cross when it is - so the crosshair
+## itself tells you whether the shot is worth taking. Turns amber while the
+## bolt is cycling, because that is a shot you do not have yet.
+func _draw_rifle_sight() -> void:
+	var centre := get_rect().size * 0.5
+	var col := Color(0.92, 0.95, 1.0, 0.80)
+	if not rifle_ready:
+		col = Color(0.95, 0.72, 0.30, 0.85)
+
+	# Gap tracks aim state and how badly the player is breathing.
+	var gap: float = lerpf(16.0, 5.0, _aim_blend) + rifle_sway * 9.0
+	var arm: float = lerpf(9.0, 6.0, _aim_blend)
+	var width: float = lerpf(1.5, 1.2, _aim_blend)
+
+	for dir: Vector2 in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
+		draw_line(centre + dir * gap, centre + dir * (gap + arm), col, width)
+
+	# Centre dot only once shouldered: it is the precise aim point.
+	if _aim_blend > 0.15:
+		draw_circle(centre, 1.4, Color(col.r, col.g, col.b, col.a * _aim_blend))
+
+	# A ranging ring while aimed, and the distance under the sight.
+	if _aim_blend > 0.5:
+		var ring := Color(col.r, col.g, col.b, 0.16 * _aim_blend)
+		draw_arc(centre, 34.0, 0.0, TAU, 48, ring, 1.0)
+		if rifle_range > 0.0:
+			var label := "%dm" % int(round(rifle_range))
+			var font := ThemeDB.fallback_font
+			var size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11)
+			draw_string(font, centre + Vector2(-size.x * 0.5, 50.0), label,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 11,
+				Color(col.r, col.g, col.b, 0.7 * _aim_blend))
 
 
 func _draw_hipfire_reticle() -> void:

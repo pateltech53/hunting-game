@@ -63,6 +63,16 @@ func _build() -> void:
 	head.add_theme_constant_override("separation", 10)
 	var grade_label := UITheme.label(grade, 42, PhotoScorer.grade_color(grade))
 	head.add_child(grade_label)
+	# Stars and price, because "grade B" says less than five stars and $180.
+	var worth := VBoxContainer.new()
+	worth.add_theme_constant_override("separation", 0)
+	worth.add_child(UITheme.label(Economy.star_text(float(record.get("score", 0.0))),
+		20, UITheme.ACCENT))
+	var price := int(record.get("price", 0))
+	worth.add_child(UITheme.label(
+		"worth $%d at the wildlife centre" % price if price > 0
+		else "no buyer would take this one", 11, UITheme.INK_DIM))
+	head.add_child(worth)
 	var score_box := VBoxContainer.new()
 	score_box.add_theme_constant_override("separation", 0)
 	score_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER

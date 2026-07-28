@@ -25,6 +25,7 @@ var _loading_bar: ProgressBar
 var _loading_label: Label
 var _book: DiscoveryBook
 var _pause: PauseMenu
+var _village_panel: VillagePanel
 var _sandbox: SandboxPanel
 var _map_overlay: Control
 var _ready_to_play := false
@@ -210,7 +211,7 @@ func _on_load_finished() -> void:
 	hud.visible = true
 	_loading.queue_free()
 	if Settings.scheme != Settings.Scheme.TOUCH:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		Settings.apply_mouse_mode()
 	AudioDirector.set_mood(AudioDirector.Mood.CALM)
 	Game.notify("%s. %s" % [Game.world_name,
 		BiomeLibrary.get_biome(player.current_biome()).blurb], "info")
@@ -303,12 +304,25 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _interact() -> void:
 	if _harvest_target == null:
+		# Nothing to harvest: if you are standing in a settlement, this is the
+		# door to its counters instead.
+		_open_village_services()
 		return
 	var species := _harvest_target.species
 	var data := _harvest_target.harvest()
 	var bits: Array[String] = ["%.1f kg" % float(data.get("weight", 0.0))]
 	if data.has("points"):
 		bits.append("%d points" % int(data["points"]))
+	# Meat goes into the pack, limited by what you can carry in one trip.
+	var progress: Dictionary = SaveSystem.profile.get("progress", {})
+	var capacity: float = 90.0 * Bank.effect("carry", 1.0)
+	var carried := float(progress.get("larder", 0.0))
+	var taken: float = minf(float(data.get("weight", 0.0)), maxf(0.0, capacity - carried))
+	progress["larder"] = carried + taken
+	SaveSystem.profile["progress"] = progress
+	if taken < float(data.get("weight", 0.0)) - 0.05:
+		Game.notify("Pack is full - %.1f kg left behind." % [
+			float(data.get("weight", 0.0)) - taken], "warn")
 	Game.notify("%s recorded: %s" % [species.name, ", ".join(bits)], "hunt")
 	if not Codex.is_discovered(species.id):
 		Game.notify("No page opened - the book only records a species from a photograph.",
@@ -316,6 +330,29 @@ func _interact() -> void:
 	_harvest_target.queue_free()
 	_harvest_target = null
 	SaveSystem.save_profile()
+
+
+## Opens the settlement counters when the player is inside one. Radius is
+## generous: hunting for the exact doorway is not interesting.
+func _open_village_services() -> void:
+	if is_instance_valid(_village_panel):
+		return
+	var best := {}
+	var best_d := 92.0
+	for key: String in voxel_world.villages:
+		var site: Dictionary = voxel_world.villages[key]
+		var d: float = player.global_position.distance_to(site["position"])
+		if d < best_d:
+			best_d = d
+			best = site
+	if best.is_empty():
+		return
+	Game.set_paused(true)
+	_village_panel = VillagePanel.new()
+	_village_panel.setup(String(best.get("name", "the village")))
+	add_child(_village_panel)
+	_village_panel.closed.connect(func() -> void:
+		Game.set_paused(false))
 
 
 func _toggle_pause() -> void:

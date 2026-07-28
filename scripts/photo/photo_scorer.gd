@@ -612,6 +612,15 @@ func commit(record: Dictionary) -> void:
 	var progress: Dictionary = SaveSystem.profile.get("progress", {})
 	progress["reputation"] = int(progress.get("reputation", 0)) + value
 	SaveSystem.profile["progress"] = progress
+
+	# What the frame is worth. Held rather than paid out here: you carry the
+	# picture to the wildlife centre and sell it there.
+	var subject_species := SpeciesLibrary.get_species(species)
+	var price := Economy.photo_price(record, subject_species, newly_discovered)
+	record["stars"] = Economy.stars(float(record.get("score", 0.0)))
+	record["price"] = price
+	if price > 0:
+		SaveSystem.register_unsold(String(record.get("id", "")), price)
 	var newly_unlocked := LensLibrary.refresh_unlocks(int(progress["reputation"]))
 	for l: Lens in newly_unlocked:
 		Game.notify("New lens unlocked: %s" % l.name, "unlock")

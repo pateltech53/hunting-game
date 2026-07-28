@@ -11,6 +11,61 @@ const CONFIG_PATH := "user://wildlight_settings.cfg"
 
 enum Scheme { KEYBOARD, GAMEPAD, TOUCH }
 
+## The control mode the player has actually chosen, as opposed to [member
+## scheme], which only tracks whichever device was touched last. Picking one
+## explicitly matters because the modes disagree about the mouse: Computer
+## never captures it, Mouse always does.
+enum ControlMode { COMPUTER, MOUSE, CONTROLLER }
+
+signal control_mode_changed(mode: int)
+
+var control_mode: ControlMode = ControlMode.MOUSE
+
+const CONTROL_MODE_NAMES := {
+	ControlMode.COMPUTER: "Computer",
+	ControlMode.MOUSE: "Mouse",
+	ControlMode.CONTROLLER: "Controller",
+}
+
+const CONTROL_MODE_BLURBS := {
+	ControlMode.COMPUTER: "Keyboard only. Arrow keys aim - no trackpad needed.",
+	ControlMode.MOUSE: "Mouse aims and clicks. The pointer locks to the view.",
+	ControlMode.CONTROLLER: "PlayStation or Xbox pad, wired or over Bluetooth.",
+}
+
+
+func set_control_mode(mode: ControlMode) -> void:
+	if control_mode == mode:
+		return
+	control_mode = mode
+	control_mode_changed.emit(int(mode))
+	apply_mouse_mode()
+	save_settings()
+
+
+## Computer mode leaves the pointer free so a laptop is usable without one;
+## the other two capture it while play is running.
+func apply_mouse_mode() -> void:
+	if not Game.in_game or Game.is_paused:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		return
+	if control_mode == ControlMode.MOUSE:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	else:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func mouse_look_enabled() -> bool:
+	return control_mode == ControlMode.MOUSE
+
+
+func key_look_enabled() -> bool:
+	return control_mode == ControlMode.COMPUTER
+
+
+func pad_look_enabled() -> bool:
+	return control_mode == ControlMode.CONTROLLER
+
 ## Quality tiers scale view distance, shadows and volumetrics.
 enum Quality { POTATO, LOW, MEDIUM, HIGH, ULTRA }
 
@@ -87,25 +142,94 @@ const MOUSE_BINDINGS := {
 	"raise_camera": MOUSE_BUTTON_RIGHT,
 }
 
+## A DualSense or DualShock reports through SDL as the standard layout, so
+## JOY_BUTTON_A is cross, B is circle, X is square and Y is triangle. Nothing
+## PlayStation-specific is needed to pair one over Bluetooth - Godot sees it
+## as a joypad the moment the OS does.
 const PAD_BINDINGS := {
-	"jump": JOY_BUTTON_A,
-	"sprint": JOY_BUTTON_LEFT_STICK,
-	"crouch": JOY_BUTTON_B,
-	"toggle_view": JOY_BUTTON_RIGHT_STICK,
-	"swap_tool": JOY_BUTTON_Y,
-	"scan": JOY_BUTTON_LEFT_SHOULDER,
-	"listen": JOY_BUTTON_RIGHT_SHOULDER,
-	"book": JOY_BUTTON_BACK,
-	"pause": JOY_BUTTON_START,
-	"interact": JOY_BUTTON_X,
+	"jump": JOY_BUTTON_A,                        # cross
+	"sprint": JOY_BUTTON_LEFT_STICK,             # L3
+	"crouch": JOY_BUTTON_B,                      # circle
+	"swap_tool": JOY_BUTTON_Y,                   # triangle
+	"interact": JOY_BUTTON_X,                    # square
+	"aim_rifle": JOY_BUTTON_LEFT_SHOULDER,       # L1
+	"scan": JOY_BUTTON_RIGHT_SHOULDER,           # R1
+	"listen": JOY_BUTTON_RIGHT_STICK,            # R3
+	"book": JOY_BUTTON_BACK,                     # share
+	"pause": JOY_BUTTON_START,                   # options
+	"toggle_view": JOY_BUTTON_DPAD_UP,
+	"map": JOY_BUTTON_DPAD_DOWN,
+	"reload": JOY_BUTTON_DPAD_LEFT,
 	"lens_next": JOY_BUTTON_DPAD_RIGHT,
-	"lens_prev": JOY_BUTTON_DPAD_LEFT,
-	"aperture_open": JOY_BUTTON_DPAD_UP,
-	"aperture_close": JOY_BUTTON_DPAD_DOWN,
 }
 
 ## Actions the mouse contributes to but that must still exist without one.
 const MOUSELESS_HINT := "Arrow keys look · F camera · R rifle · Enter shutter"
+
+## What the pause menu prints. One table per mode, because the honest answer
+## to "what are the controls" is different in each. PlayStation faces are
+## named rather than drawn: a pad reports as an Xbox layout through SDL, so
+## cross sits where A does, circle where B does, and so on.
+const CONTROLS_REFERENCE := {
+	ControlMode.COMPUTER: [
+		["Move", "W A S D"],
+		["Look", "Arrow keys"],
+		["Raise camera", "F"],
+		["Aim rifle", "R"],
+		["Shutter / fire", "Enter"],
+		["Swap camera and rifle", "X"],
+		["Read tracks (hold)", "Q"],
+		["Listen (hold)", "E"],
+		["Sprint / crouch", "Shift / C"],
+		["Jump", "Space"],
+		["Third person", "V"],
+		["Discovery Book", "Tab"],
+		["Map", "M"],
+		["Interact", "B"],
+		["Reload", "T"],
+		["Pause", "Esc"],
+	],
+	ControlMode.MOUSE: [
+		["Move", "W A S D"],
+		["Look", "Mouse"],
+		["Raise camera", "Right mouse or F"],
+		["Aim rifle", "R"],
+		["Shutter / fire", "Left mouse or Enter"],
+		["Swap camera and rifle", "X"],
+		["Read tracks (hold)", "Q"],
+		["Listen (hold)", "E"],
+		["Sprint / crouch", "Shift / C"],
+		["Jump", "Space"],
+		["Third person", "V"],
+		["Discovery Book", "Tab"],
+		["Map", "M"],
+		["Interact", "B"],
+		["Reload", "T"],
+		["Pause", "Esc"],
+	],
+	ControlMode.CONTROLLER: [
+		["Move", "Left stick"],
+		["Look", "Right stick"],
+		["Raise camera", "L2"],
+		["Aim rifle", "L1"],
+		["Shutter / fire", "R2"],
+		["Swap camera and rifle", "Triangle"],
+		["Read tracks (hold)", "R1"],
+		["Listen (hold)", "Right stick click"],
+		["Sprint / crouch", "L3 / Circle"],
+		["Jump", "Cross"],
+		["Third person", "D-pad up"],
+		["Discovery Book", "Share"],
+		["Map", "D-pad down"],
+		["Interact", "Square"],
+		["Reload", "D-pad left"],
+		["Pause", "Options"],
+	],
+}
+
+
+func controls_reference() -> Array:
+	return CONTROLS_REFERENCE.get(control_mode, CONTROLS_REFERENCE[ControlMode.MOUSE])
 
 
 func _ready() -> void:
@@ -297,6 +421,7 @@ func save_settings() -> void:
 	cfg.set_value("input", "mouse_sensitivity", mouse_sensitivity)
 	cfg.set_value("input", "touch_sensitivity", touch_look_sensitivity)
 	cfg.set_value("input", "invert_y", invert_y)
+	cfg.set_value("input", "control_mode", int(control_mode))
 	cfg.set_value("camera", "grid", show_viewfinder_grid)
 	cfg.set_value("camera", "histogram", show_histogram)
 	cfg.save(CONFIG_PATH)
@@ -318,5 +443,6 @@ func load_settings() -> void:
 	mouse_sensitivity = cfg.get_value("input", "mouse_sensitivity", mouse_sensitivity)
 	touch_look_sensitivity = cfg.get_value("input", "touch_sensitivity", touch_look_sensitivity)
 	invert_y = cfg.get_value("input", "invert_y", invert_y)
+	control_mode = cfg.get_value("input", "control_mode", int(control_mode)) as ControlMode
 	show_viewfinder_grid = cfg.get_value("camera", "grid", show_viewfinder_grid)
 	show_histogram = cfg.get_value("camera", "histogram", show_histogram)

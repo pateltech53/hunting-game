@@ -52,8 +52,9 @@ func _run_shot_test() -> void:
 	_shot_queue = [
 		{"t": 12.0, "name": "01_first_person", "do": "none"},
 		{"t": 2.0, "name": "02_third_person", "do": "third"},
-		{"t": 2.0, "name": "03_third_person_aim", "do": "third_aim"},
-		{"t": 2.0, "name": "04_first_person_aim", "do": "first_aim"},
+		{"t": 2.0, "name": "03_rifle_hip", "do": "rifle"},
+		{"t": 2.0, "name": "04_rifle_aimed", "do": "rifle_aim"},
+		{"t": 2.0, "name": "05_pause_menu", "do": "pause"},
 	]
 
 
@@ -93,6 +94,16 @@ func _apply_shot_action(action: String) -> void:
 		"first_aim":
 			player.rig.set_third_person(false)
 			camera.set_raised(true)
+		"rifle":
+			player.rig.set_third_person(false)
+			camera.set_raised(false)
+			player.set_tool(Player.Tool.RIFLE)
+		"rifle_aim":
+			var r: Rifle = world.get("rifle")
+			r.set_aimed(true)
+		"pause":
+			# The menu is built by world_root, not by Game.set_paused.
+			world.call("_toggle_pause")
 	print("[shots] action %s -> third_person=%s" % [action, player.rig.third_person])
 
 
@@ -339,4 +350,7 @@ func _report_smoke() -> void:
 			c.progress_text()])
 	print("[smoke] audio bank ready: sfx=%s music=%s" % [AudioDirector.ready_sfx,
 		AudioDirector.ready_music])
+	print("[smoke] funds $%d, unsold %d frames worth $%d, larder %.1f kg" % [
+		Bank.funds(), SaveSystem.unsold_count(), SaveSystem.unsold_total(),
+		float(SaveSystem.profile.get("progress", {}).get("larder", 0.0))])
 	print("[smoke] done")

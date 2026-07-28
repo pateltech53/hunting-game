@@ -183,3 +183,39 @@ func reset_profile() -> void:
 	profile = default_profile()
 	save_profile()
 	profile_loaded.emit()
+
+
+# ------------------------------------------------------------ unsold frames
+
+## Photographs worth money that have not been taken to a buyer yet. Kept as a
+## flat id -> price map so selling is a single lookup and the ledger survives
+## a reload.
+func register_unsold(photo_id: String, price: int) -> void:
+	if photo_id == "" or price <= 0:
+		return
+	var progress: Dictionary = profile.get("progress", {})
+	var pending: Dictionary = progress.get("unsold", {})
+	pending[photo_id] = price
+	progress["unsold"] = pending
+	profile["progress"] = progress
+
+
+func unsold_total() -> int:
+	var pending: Dictionary = profile.get("progress", {}).get("unsold", {})
+	var total := 0
+	for key: String in pending:
+		total += int(pending[key])
+	return total
+
+
+func unsold_count() -> int:
+	return (profile.get("progress", {}).get("unsold", {}) as Dictionary).size()
+
+
+## Clears the ledger and returns what it was worth.
+func take_unsold() -> int:
+	var total := unsold_total()
+	var progress: Dictionary = profile.get("progress", {})
+	progress["unsold"] = {}
+	profile["progress"] = progress
+	return total
