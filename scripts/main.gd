@@ -3,8 +3,12 @@ extends Node
 ## Entry point. Everything else is built at runtime.
 
 
-## Seconds a `--smoke` run stays in the world before quitting.
+## Seconds a `--smoke` run stays in the world before quitting. Override with
+## `--smoke-seconds=N`; the drive system needs a couple of minutes before
+## animals start acting on hunger and thirst, so short runs under-report it.
 const SMOKE_SECONDS := 25.0
+
+var _smoke_seconds := SMOKE_SECONDS
 
 var _smoke := false
 var _smoke_elapsed := 0.0
@@ -102,6 +106,8 @@ func _run_smoke_test() -> void:
 			seed_value = int(arg.trim_prefix("--seed="))
 		elif arg == "--sandbox":
 			mode = Game.Mode.SANDBOX
+		elif arg.begins_with("--smoke-seconds="):
+			_smoke_seconds = float(arg.trim_prefix("--smoke-seconds="))
 	print("[smoke] starting %s, seed %d" % ["sandbox" if mode == Game.Mode.SANDBOX
 		else "expedition", seed_value])
 	Game.start_game(mode, seed_value)
@@ -117,13 +123,13 @@ func _process(delta: float) -> void:
 	if not _smoke:
 		return
 	_smoke_elapsed += delta
-	if _smoke_stage == 0 and _smoke_elapsed > SMOKE_SECONDS * 0.55:
+	if _smoke_stage == 0 and _smoke_elapsed > _smoke_seconds * 0.55:
 		_smoke_stage = 1
 		_smoke_photo()
-	elif _smoke_stage == 1 and _smoke_elapsed > SMOKE_SECONDS * 0.80:
+	elif _smoke_stage == 1 and _smoke_elapsed > _smoke_seconds * 0.80:
 		_smoke_stage = 2
 		_smoke_village()
-	if _smoke_elapsed < SMOKE_SECONDS:
+	if _smoke_elapsed < _smoke_seconds:
 		return
 	set_process(false)
 	_report_smoke()
@@ -289,6 +295,21 @@ func _report_smoke() -> void:
 	print("[smoke] player at %s in %s" % [player.global_position.round(),
 		player.current_biome()])
 	print("[smoke] wildlife: %s" % wildlife.population_summary())
+	# What the animals are actually doing, so "they just wander" is testable.
+	var intents := {}
+	var hunger := 0.0
+	var thirst := 0.0
+	var fatigue := 0.0
+	var live := wildlife.active_animals()
+	for a: Animal in live:
+		intents[a.intent] = int(intents.get(a.intent, 0)) + 1
+		hunger += a.hunger
+		thirst += a.thirst
+		fatigue += a.fatigue
+	var n: float = maxf(float(live.size()), 1.0)
+	print("[smoke] intents: %s" % intents)
+	print("[smoke] mean needs: hunger %.2f, thirst %.2f, fatigue %.2f" % [
+		hunger / n, thirst / n, fatigue / n])
 	print("[smoke] clock %s, phase %s, EV %.1f, weather %s" % [sky.clock_string(),
 		sky.light_phase(), sky.scene_ev(), world.get("weather").display_name()])
 	print("[smoke] villages known: %d, markers: %d" % [voxel_world.villages.size(),

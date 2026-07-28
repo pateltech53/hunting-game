@@ -17,6 +17,10 @@ const TURN_SMOOTH := 4.0
 const AWARENESS_DECAY := 0.28
 const FLEE_MEMORY := 9.0
 
+## Families a prey animal will run from on sight. Kept here rather than on
+## Species because it is a fact about the ecosystem, not about one animal.
+const PREDATOR_FAMILIES := ["Canidae", "Ursidae", "Felidae", "Accipitridae"]
+
 var species: Species
 var world: VoxelWorld
 var sky: SkySystem
@@ -51,6 +55,18 @@ var _track_distance := 0.0
 var _last_track_pos := Vector3.ZERO
 var _flee_timer := 0.0
 var _look_at_player := 0.0
+
+# ------------------------------------------------------------------- drives
+# Animals are not random walkers. Each carries three needs that climb with
+# time and are satisfied by going somewhere specific, so what looks like
+# wandering is usually an animal on its way to water, to food, or to bed.
+var hunger := 0.0
+var thirst := 0.0
+var fatigue := 0.0
+var intent := "wandering"       ## what the current target is for
+var _needs_timer := 0.0
+var _predator_check := 0.0
+var _curious_cooldown := 0.0
 var _rng := RandomNumberGenerator.new()
 var _collider: CollisionShape3D
 var _sighted_reported := false
@@ -162,14 +178,55 @@ func _sense(delta: float) -> void:
 		awareness = maxf(0.0, awareness - AWARENESS_DECAY * delta)
 
 
+## Needs climb slowly and are reset by acting on them. Rates are per real
+## second and tuned so an animal cycles food, water and rest a few times an
+## hour rather than constantly.
+func _update_needs(delta: float) -> void:
+	var hour: float = sky.time_of_day if sky != null else 12.0
+	hunger = minf(1.0, hunger + delta * 0.012)
+	thirst = minf(1.0, thirst + delta * 0.017)
+	# Tiredness depends on whether this is one of the species' active hours.
+	fatigue = minf(1.0, fatigue + delta * (0.006 if species.is_active_at(hour) else 0.022))
+	_curious_cooldown = maxf(0.0, _curious_cooldown - delta)
+
+
+## Anything bigger that eats meat is worth running from, whether or not it has
+## noticed you. Checked on a timer because it walks the whole live list.
+func _check_predators(delta: float) -> bool:
+	_predator_check -= delta
+	if _predator_check > 0.0:
+		return false
+	_predator_check = 0.9
+	if species.family in PREDATOR_FAMILIES:
+		return false                                  # predators fear nothing here
+	var director := get_parent()
+	if director == null or not director.has_method("active_animals"):
+		return false
+	for other: Animal in director.active_animals():
+		if other == self or other.is_dead:
+			continue
+		if other.species.family not in PREDATOR_FAMILIES:
+			continue
+		if other.species.shoulder_height < species.shoulder_height * 0.6:
+			continue                                  # too small to be a threat
+		var d := global_position.distance_to(other.global_position)
+		if d < species.vision_range * 0.8:
+			_flee_from(other.global_position)
+			return true
+	return false
+
+
 func _think(delta: float) -> void:
 	_state_timer -= delta
 	_flee_timer = maxf(0.0, _flee_timer - delta)
+	_update_needs(delta)
 	var distance := player.global_position.distance_to(global_position) if player != null \
 		else 999.0
 
 	if state != State.FLEE and (awareness >= 1.0 or distance < species.flee_distance * 0.45):
 		_enter_flee()
+		return
+	if state != State.FLEE and _check_predators(delta):
 		return
 	if state != State.FLEE and state != State.ALERT and awareness > 0.45:
 		_set_state(State.ALERT, "alert")
@@ -191,19 +248,163 @@ func _think(delta: float) -> void:
 				awareness = 0.5
 		State.WANDER:
 			if global_position.distance_to(_target) < 1.6 or _state_timer <= 0.0:
-				if _rng.randf() < 0.55:
-					_enter_busy()
-				else:
-					_pick_new_target()
+				# Arriving somewhere it was heading for on purpose is what
+				# satisfies the need that sent it there.
+				_satisfy_on_arrival()
 		State.BUSY, State.IDLE, State.REST:
 			if _state_timer <= 0.0:
-				if _rng.randf() < 0.3:
-					_enter_rest()
-				else:
-					_set_state(State.WANDER, "walking")
-					_pick_new_target()
+				_pick_purposeful_target()
 		_:
 			pass
+
+
+## Chooses where to go next and why. This is the whole behaviour model: the
+## strongest need wins, and each one has a different kind of destination.
+func _pick_purposeful_target() -> void:
+	var hour: float = sky.time_of_day if sky != null else 12.0
+
+	# Sleep. Outside its active hours a tired animal heads back to cover and
+	# stays there, which is why the woods are quiet in the middle of the day.
+	if fatigue > 0.65 and not species.is_active_at(hour):
+		_target = _valid_ground(_home + Vector3(_rng.randf_range(-6.0, 6.0), 0.0,
+			_rng.randf_range(-6.0, 6.0)))
+		intent = "returning to cover"
+		if global_position.distance_to(_home) < 12.0:
+			_enter_rest()
+			fatigue = maxf(0.0, fatigue - 0.55)
+			return
+		_set_state(State.WANDER, "walking")
+		_state_timer = _rng.randf_range(8.0, 16.0)
+		return
+
+	# Thirst outranks hunger: an animal will walk past food to reach water.
+	if thirst > 0.55:
+		var water := _find_water()
+		if water != Vector3.ZERO:
+			_target = water
+			intent = "heading for water"
+			_set_state(State.WANDER, "walking")
+			_state_timer = _rng.randf_range(10.0, 20.0)
+			return
+
+	if hunger > 0.5:
+		_target = _find_forage()
+		intent = "feeding"
+		_set_state(State.WANDER, "walking")
+		_state_timer = _rng.randf_range(8.0, 16.0)
+		return
+
+	# Herding. Drifting too far from the leader pulls it back in, which is what
+	# keeps a group looking like a group rather than scattered singles.
+	if herd_leader != null and herd_leader != self and is_instance_valid(herd_leader) \
+			and not herd_leader.is_dead:
+		var lead_gap := global_position.distance_to(herd_leader.global_position)
+		if lead_gap > 16.0:
+			_target = _valid_ground(herd_leader.global_position + Vector3(
+				_rng.randf_range(-5.0, 5.0), 0.0, _rng.randf_range(-5.0, 5.0)))
+			intent = "rejoining the herd"
+			_set_state(State.WANDER, "walking")
+			_state_timer = _rng.randf_range(6.0, 12.0)
+			return
+
+	# Curiosity. A bold animal with nothing pressing will come and have a look
+	# at you, which is how the best portraits happen.
+	if player != null and _curious_cooldown <= 0.0 and awareness < 0.3:
+		var gap := global_position.distance_to(player.global_position)
+		if gap < species.vision_range and gap > species.flee_distance * 1.2 \
+				and _rng.randf() < species.curiosity:
+			var toward := (player.global_position - global_position).normalized()
+			_target = _valid_ground(global_position + toward
+				* (gap - species.flee_distance * 1.1))
+			intent = "curious"
+			_curious_cooldown = _rng.randf_range(20.0, 60.0)
+			_set_state(State.WANDER, "walking")
+			_state_timer = _rng.randf_range(5.0, 9.0)
+			return
+
+	if _rng.randf() < 0.45:
+		_enter_busy()
+	else:
+		_pick_new_target()
+		intent = "wandering"
+
+
+## Reaching a purposeful destination is what actually pays the need down.
+func _satisfy_on_arrival() -> void:
+	match intent:
+		"heading for water":
+			thirst = 0.0
+			_enter_busy()
+			behaviour = "drinking"
+			state_changed.emit(behaviour)
+		"feeding":
+			hunger = maxf(0.0, hunger - 0.75)
+			_enter_busy()
+		"returning to cover":
+			_enter_rest()
+			fatigue = maxf(0.0, fatigue - 0.55)
+		_:
+			if _rng.randf() < 0.55:
+				_enter_busy()
+			else:
+				_pick_purposeful_target()
+	intent = "wandering"
+
+
+## Walks outward looking for anything at or below the waterline.
+func _find_water() -> Vector3:
+	if world == null:
+		return Vector3.ZERO
+	for ring in 6:
+		var radius := 14.0 + float(ring) * 16.0
+		for step in 8:
+			var a := TAU * (float(step) / 8.0) + _rng.randf_range(-0.3, 0.3)
+			var p := global_position + Vector3(cos(a), 0.0, sin(a)) * radius
+			var h := float(world.surface_height(p.x, p.z))
+			if h <= float(TerrainGenerator.SEA_LEVEL):
+				# Stop at the bank rather than wading in.
+				var toward := (global_position - p).normalized()
+				return _valid_ground(p + toward * 2.5)
+	return Vector3.ZERO
+
+
+## Grazers want open ground, browsers want the treeline. Approximated by
+## preferring somewhere flatter or steeper than here rather than by reading
+## the vegetation, which would cost a lot more for a similar-looking result.
+func _find_forage() -> Vector3:
+	var best := global_position
+	var best_score := -INF
+	for attempt in 7:
+		var a := _rng.randf_range(-PI, PI)
+		var radius := _rng.randf_range(10.0, 38.0)
+		var p := _valid_ground(global_position + Vector3(cos(a), 0.0, sin(a)) * radius)
+		if p.y <= float(TerrainGenerator.SEA_LEVEL):
+			continue
+		var slope: float = world.gen.gradient_slope(p.x, p.z) if world != null \
+			and world.gen != null else 0.0
+		# Big grazers want it flat; small browsers are happier in broken ground.
+		var want: float = 0.0 if species.size_class == "large" else 0.35
+		var score := -absf(slope - want) + _rng.randf() * 0.2
+		if score > best_score:
+			best_score = score
+			best = p
+	return best
+
+
+## Shared by the player-flee path and the predator-flee path.
+func _flee_from(threat: Vector3) -> void:
+	var away := (global_position - threat).normalized()
+	if away.length() < 0.1:
+		away = Vector3.FORWARD
+	var run := 30.0 + species.flee_distance
+	_target = _valid_ground(global_position + away * run + Vector3(
+		_rng.randf_range(-12.0, 12.0), 0.0, _rng.randf_range(-12.0, 12.0)))
+	_flee_timer = FLEE_MEMORY + _rng.randf_range(0.0, 4.0)
+	intent = "fleeing"
+	_set_state(State.FLEE, "fleeing")
+	spooked.emit(self)
+	if herd_leader != null and herd_leader != self and not herd_leader.is_dead:
+		herd_leader.alarm()
 
 
 func _enter_flee() -> void:
