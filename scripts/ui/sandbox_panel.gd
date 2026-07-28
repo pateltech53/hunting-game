@@ -53,7 +53,7 @@ func _ready() -> void:
 	box.add_child(UITheme.separator())
 
 	# --- time ---------------------------------------------------------------
-	box.add_child(UITheme.label("TIME OF DAY", 12, UITheme.ACCENT_DIM))
+	box.add_child(UITheme.eyebrow("Time Of Day"))
 	_time_label = UITheme.label("", 15)
 	box.add_child(_time_label)
 	_time_slider = UITheme.slider(0.0, 23.99, 0.05, sky.time_of_day if sky != null else 12.0)
@@ -93,7 +93,7 @@ func _ready() -> void:
 
 	# --- weather ------------------------------------------------------------
 	box.add_child(UITheme.spacer(6))
-	box.add_child(UITheme.label("WEATHER", 12, UITheme.ACCENT_DIM))
+	box.add_child(UITheme.eyebrow("Weather"))
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 4)
@@ -119,7 +119,7 @@ func _ready() -> void:
 
 	# --- wildlife -----------------------------------------------------------
 	box.add_child(UITheme.spacer(6))
-	box.add_child(UITheme.label("WILDLIFE", 12, UITheme.ACCENT_DIM))
+	box.add_child(UITheme.eyebrow("Wildlife"))
 	_species_picker = OptionButton.new()
 	var ids := SpeciesLibrary.ids()
 	for i in ids.size():
@@ -146,7 +146,7 @@ func _ready() -> void:
 
 	# --- travel -------------------------------------------------------------
 	box.add_child(UITheme.spacer(6))
-	box.add_child(UITheme.label("TRAVEL", 12, UITheme.ACCENT_DIM))
+	box.add_child(UITheme.eyebrow("Travel"))
 	var travel := VBoxContainer.new()
 	travel.add_theme_constant_override("separation", 4)
 	for biome_id: String in BiomeLibrary.ids():

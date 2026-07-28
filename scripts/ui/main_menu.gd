@@ -24,10 +24,9 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	var bg := ColorRect.new()
-	bg.color = Color(0.035, 0.045, 0.052)
-	UITheme.full_screen(bg)
-	add_child(bg)
+	# A valley with the clock running slowly, rather than a flat fill. The
+	# menu is meant to be somewhere you can linger.
+	add_child(TitleBackdrop.new())
 
 	var columns := HBoxContainer.new()
 	columns.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -39,16 +38,24 @@ func _build() -> void:
 	add_child(columns)
 
 	# --- left: title and actions -------------------------------------------
+	var card := UITheme.paper_panel(18)
+	card.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	card.custom_minimum_size = Vector2(430, 0)
+	columns.add_child(card)
 	var left := VBoxContainer.new()
 	left.add_theme_constant_override("separation", 8)
-	left.custom_minimum_size = Vector2(400, 0)
-	columns.add_child(left)
+	card.add_child(left)
 
-	left.add_child(UITheme.label("WILDLIGHT", 52, UITheme.ACCENT))
-	left.add_child(UITheme.label("A voxel photography and hunting game", 15, UITheme.INK_DIM))
+	var title := UITheme.heading("Wildlight", 60, UITheme.PAPER_INK)
+	left.add_child(title)
+	var subtitle := UITheme.label("Wildlife Photography Adventure", 13, UITheme.PAPER_INK_DIM)
+	left.add_child(subtitle)
+	# The title arrives out of the light rather than being there already.
+	UITheme.fade_in(title, 1.6)
+	UITheme.fade_in(subtitle, 2.4)
 	left.add_child(UITheme.spacer(14))
 
-	left.add_child(UITheme.label("MODE", 12, UITheme.ACCENT_DIM))
+	left.add_child(UITheme.eyebrow("Mode", UITheme.RUST))
 	var modes := VBoxContainer.new()
 	modes.add_theme_constant_override("separation", 4)
 	for entry: Array in [
@@ -56,7 +63,7 @@ func _build() -> void:
 		[Game.Mode.FREE_ROAM, "Free Roam", "The same world, no assignments. Just go."],
 		[Game.Mode.SANDBOX, "Sandbox", "Every lens unlocked. Control time, weather and wildlife."],
 	]:
-		var b := UITheme.button(entry[1])
+		var b := UITheme.paper_button(entry[1])
 		b.tooltip_text = entry[2]
 		b.pressed.connect(_on_mode.bind(entry[0]))
 		modes.add_child(b)
@@ -65,16 +72,15 @@ func _build() -> void:
 	_highlight_mode()
 
 	left.add_child(UITheme.spacer(10))
-	left.add_child(UITheme.label("WORLD SEED", 12, UITheme.ACCENT_DIM))
+	left.add_child(UITheme.eyebrow("World seed", UITheme.RUST))
 	var seed_row := HBoxContainer.new()
 	seed_row.add_theme_constant_override("separation", 6)
-	_seed_field = LineEdit.new()
-	_seed_field.text = str(_seed_value)
+	_seed_field = UITheme.paper_field(str(_seed_value))
 	_seed_field.custom_minimum_size = Vector2(180, 38)
 	_seed_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_seed_field.text_changed.connect(_on_seed_typed)
 	seed_row.add_child(_seed_field)
-	var dice := UITheme.button("Roll", false)
+	var dice := UITheme.paper_button("Roll")
 	dice.custom_minimum_size = Vector2(90, 38)
 	dice.pressed.connect(func() -> void:
 		_seed_value = randi() & 0x7FFFFFFF
@@ -84,31 +90,32 @@ func _build() -> void:
 	seed_row.add_child(dice)
 	left.add_child(seed_row)
 
-	_summary = UITheme.label("", 13, UITheme.INK_DIM)
+	_summary = UITheme.label("", 12, UITheme.PAPER_INK_DIM)
 	_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_summary.custom_minimum_size = Vector2(380, 44)
 	left.add_child(_summary)
 
 	left.add_child(UITheme.spacer(10))
-	var start := UITheme.button("Head out")
+	var start := UITheme.paper_button("Head out")
+	start.custom_minimum_size = Vector2(0, 42)
 	start.pressed.connect(_start)
 	left.add_child(start)
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
-	var book := UITheme.button("Discovery Book", false)
+	var book := UITheme.paper_button("Discovery Book")
 	book.custom_minimum_size = Vector2(0, 38)
 	book.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	book.pressed.connect(_open_book)
 	row.add_child(book)
-	var options := UITheme.button("Settings", false)
+	var options := UITheme.paper_button("Settings")
 	options.custom_minimum_size = Vector2(0, 38)
 	options.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	options.pressed.connect(_open_settings)
 	row.add_child(options)
 	left.add_child(row)
 
-	var quit := UITheme.button("Quit", false)
+	var quit := UITheme.paper_button("Quit")
 	quit.custom_minimum_size = Vector2(0, 34)
 	quit.pressed.connect(func() -> void: Game.quit_game())
 	left.add_child(quit)
@@ -131,25 +138,25 @@ func _build() -> void:
 
 
 func _career_panel() -> Control:
-	var panel := UITheme.panel()
+	var panel := UITheme.paper_panel()
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)
 	var stats: Dictionary = SaveSystem.profile.get("stats", {})
 	var progress: Dictionary = SaveSystem.profile.get("progress", {})
-	box.add_child(UITheme.label("FIELD RECORD", 12, UITheme.ACCENT_DIM))
+	box.add_child(UITheme.eyebrow("Field record", UITheme.RUST))
 	box.add_child(UITheme.label("%d of %d species in the book" % [
-		Codex.discovered_count(), SpeciesLibrary.total_count()], 16))
+		Codex.discovered_count(), SpeciesLibrary.total_count()], 16, UITheme.PAPER_INK))
 	box.add_child(UITheme.label(
 		"%d photographs  ·  best score %d  ·  reputation %d" % [
 			int(float(stats.get("photos_taken", 0.0))),
 			int(float(stats.get("best_photo_score", 0.0))),
-			int(progress.get("reputation", 0))], 13, UITheme.INK_DIM))
+			int(progress.get("reputation", 0))], 13, UITheme.PAPER_INK_DIM))
 	var lenses: Array = progress.get("unlocked_lenses", [])
 	box.add_child(UITheme.label("%d of %d lenses unlocked" % [lenses.size(),
-		LensLibrary.ids().size()], 13, UITheme.INK_DIM))
+		LensLibrary.ids().size()], 13, UITheme.PAPER_INK_DIM))
 	var hours := float(stats.get("time_played", 0.0)) / 3600.0
 	box.add_child(UITheme.label("%.1f hours in the field  ·  %.1f km walked" % [
-		hours, float(stats.get("distance_walked", 0.0)) * 0.001], 13, UITheme.INK_DIM))
+		hours, float(stats.get("distance_walked", 0.0)) * 0.001], 13, UITheme.PAPER_INK_DIM))
 	panel.add_child(box)
 	return panel
 

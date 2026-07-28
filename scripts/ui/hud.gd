@@ -18,6 +18,11 @@ var world: VoxelWorld
 var viewfinder: Viewfinder
 
 var _root: Control
+## Panels that fade out when nothing is happening. The viewfinder and the
+## rifle sight are deliberately not in here - those must never disappear.
+var _chrome: Array[Control] = []
+var _chrome_alpha := 1.0
+var _idle := 0.0
 var _conditions: Label
 var _purse: Label
 var _location: Label
@@ -102,6 +107,7 @@ func _build_conditions() -> void:
 	box.add_child(_location)
 	box.add_child(_purse)
 	panel.add_child(box)
+	_chrome.append(panel)
 	_root.add_child(panel)
 
 
@@ -113,11 +119,12 @@ func _build_contracts() -> void:
 	panel.offset_top = 16
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
-	box.add_child(UITheme.label("ASSIGNMENTS", 12, UITheme.ACCENT_DIM))
+	box.add_child(UITheme.eyebrow("Assignments"))
 	_contract_box = VBoxContainer.new()
 	_contract_box.add_theme_constant_override("separation", 6)
 	box.add_child(_contract_box)
 	panel.add_child(box)
+	_chrome.append(panel)
 	_root.add_child(panel)
 
 
@@ -131,6 +138,7 @@ func _build_readout() -> void:
 	_readout = UITheme.rich("", 14)
 	_readout.custom_minimum_size = Vector2(310, 0)
 	_readout_panel.add_child(_readout)
+	_chrome.append(_readout_panel)
 	_root.add_child(_readout_panel)
 
 
@@ -165,6 +173,7 @@ func _build_bottom() -> void:
 	box.add_child(UITheme.label("arrows look  ·  WASD move  ·  V view",
 		11, UITheme.INK_FAINT))
 	panel.add_child(box)
+	_chrome.append(panel)
 	_root.add_child(panel)
 
 	_prompt = UITheme.label("", 16, UITheme.ACCENT)
@@ -196,7 +205,7 @@ func _build_scan() -> void:
 	_scan_panel.visible = false
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)
-	box.add_child(UITheme.label("FIELD SIGN", 12, UITheme.ACCENT_DIM))
+	box.add_child(UITheme.eyebrow("Field Sign"))
 	_scan_box = VBoxContainer.new()
 	_scan_box.add_theme_constant_override("separation", 2)
 	box.add_child(_scan_box)
@@ -211,12 +220,39 @@ func _build_scan() -> void:
 func _process(delta: float) -> void:
 	if player == null:
 		return
+	_update_chrome_fade(delta)
 	_update_conditions()
 	_update_readout()
 	_update_viewfinder()
 	_update_toasts(delta)
 	_update_scan(delta)
 	_stamina.value = player.stamina
+
+
+## The world is the subject. Stand still and stop touching anything and the
+## panels sink away; move, aim, or open something and they come back. The
+## fade out is slow and the fade in is quick, so the interface reads as
+## stepping aside rather than as a glitch.
+func _update_chrome_fade(delta: float) -> void:
+	var busy := false
+	if Vector2(player.velocity.x, player.velocity.z).length() > 0.4:
+		busy = true
+	elif camera != null and camera.raised:
+		busy = true
+	elif rifle != null and rifle.active and rifle.aimed:
+		busy = true
+	elif tracker != null and (tracker.listening or tracker.scanning):
+		busy = true
+	elif Input.is_anything_pressed():
+		busy = true
+
+	_idle = 0.0 if busy else _idle + delta
+	var want: float = 1.0 if _idle < 4.0 else 0.14
+	var rate: float = 5.0 if want > _chrome_alpha else 0.8
+	_chrome_alpha = move_toward(_chrome_alpha, want, delta * rate)
+	for c in _chrome:
+		if is_instance_valid(c):
+			c.modulate.a = _chrome_alpha
 
 
 func _update_conditions() -> void:

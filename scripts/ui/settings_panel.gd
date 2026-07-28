@@ -32,7 +32,7 @@ func _ready() -> void:
 	box.add_child(UITheme.heading("Settings", 26))
 	box.add_child(UITheme.separator())
 
-	box.add_child(UITheme.label("DISPLAY", 12, UITheme.ACCENT_DIM))
+	box.add_child(UITheme.eyebrow("Display"))
 	var quality := OptionButton.new()
 	for i in QUALITY_NAMES.size():
 		quality.add_item(QUALITY_NAMES[i], i)
@@ -63,7 +63,7 @@ func _ready() -> void:
 			Settings.apply()))
 
 	box.add_child(UITheme.spacer(6))
-	box.add_child(UITheme.label("CAMERA", 12, UITheme.ACCENT_DIM))
+	box.add_child(UITheme.eyebrow("Camera"))
 	box.add_child(_check_row("Viewfinder grid", Settings.show_viewfinder_grid,
 		func(on: bool) -> void:
 			Settings.show_viewfinder_grid = on
@@ -74,7 +74,7 @@ func _ready() -> void:
 			Settings.apply()))
 
 	box.add_child(UITheme.spacer(6))
-	box.add_child(UITheme.label("INPUT", 12, UITheme.ACCENT_DIM))
+	box.add_child(UITheme.eyebrow("Input"))
 	box.add_child(_slider_row("Mouse sensitivity", 0.0005, 0.006, 0.0001,
 		Settings.mouse_sensitivity,
 		func(v: float) -> void:
@@ -96,7 +96,7 @@ func _ready() -> void:
 			Game.notify("On-screen controls %s." % ("on" if on else "off"), "info")))
 
 	box.add_child(UITheme.spacer(6))
-	box.add_child(UITheme.label("AUDIO", 12, UITheme.ACCENT_DIM))
+	box.add_child(UITheme.eyebrow("Audio"))
 	box.add_child(_slider_row("Master", 0.0, 1.0, 0.02, Settings.master_volume,
 		func(v: float) -> void:
 			Settings.master_volume = v

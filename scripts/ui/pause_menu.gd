@@ -65,7 +65,7 @@ func _ready() -> void:
 	box.add_child(options)
 
 	box.add_child(UITheme.spacer(6))
-	box.add_child(UITheme.label("CONTROL MODE", 11, UITheme.ACCENT))
+	box.add_child(UITheme.eyebrow("Control Mode"))
 	for mode: int in [Settings.ControlMode.COMPUTER, Settings.ControlMode.MOUSE,
 			Settings.ControlMode.CONTROLLER]:
 		var b := UITheme.button(Settings.CONTROL_MODE_NAMES[mode])

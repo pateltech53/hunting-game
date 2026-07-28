@@ -48,6 +48,10 @@ func _run_shot_test() -> void:
 		elif arg.begins_with("--out="):
 			_shot_dir = arg.trim_prefix("--out=")
 	DirAccess.make_dir_recursive_absolute(_shot_dir)
+	if OS.get_cmdline_user_args().has("--menu"):
+		Game.boot()
+		_shot_queue = [{"t": 3.5, "name": "00_main_menu", "do": "none"}]
+		return
 	Game.start_game(Game.Mode.EXPEDITION, seed_value)
 	_shot_queue = [
 		{"t": 12.0, "name": "01_first_person", "do": "none"},
@@ -82,6 +86,8 @@ func _process_shots(delta: float) -> void:
 func _apply_shot_action(action: String) -> void:
 	var world: Node = Game.world
 	if world == null:
+		return
+	if action == "none":
 		return
 	var player: Player = world.get("player")
 	var camera: PhotoCamera = world.get("photo_camera")

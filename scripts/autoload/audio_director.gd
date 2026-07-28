@@ -49,6 +49,18 @@ func _ready() -> void:
 	_music_task = WorkerThreadPool.add_task(_synthesise_music, true, "wildlight_music")
 
 
+## The synthesis tasks hold references to the Synth script. Quitting before
+## they finish frees it underneath them, which surfaces as "nonexistent
+## function" errors from the worker threads on the way out. Wait for them.
+func _exit_tree() -> void:
+	if _sfx_task != -1:
+		WorkerThreadPool.wait_for_task_completion(_sfx_task)
+		_sfx_task = -1
+	if _music_task != -1:
+		WorkerThreadPool.wait_for_task_completion(_music_task)
+		_music_task = -1
+
+
 # ---------------------------------------------------------------- web unlock
 
 var _web_unlocked := false

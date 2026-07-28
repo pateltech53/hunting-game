@@ -41,18 +41,18 @@ func _ready() -> void:
 	box.add_child(_funds_label)
 	box.add_child(UITheme.separator())
 
-	box.add_child(UITheme.label("WILDLIFE CENTRE", 11, UITheme.ACCENT))
+	box.add_child(UITheme.eyebrow("Wildlife Centre"))
 	_photo_button = UITheme.button("")
 	_photo_button.pressed.connect(_sell_photos)
 	box.add_child(_photo_button)
 
-	box.add_child(UITheme.label("BUTCHER", 11, UITheme.ACCENT))
+	box.add_child(UITheme.eyebrow("Butcher"))
 	_meat_button = UITheme.button("")
 	_meat_button.pressed.connect(_sell_meat)
 	box.add_child(_meat_button)
 
 	box.add_child(UITheme.spacer(4))
-	box.add_child(UITheme.label("OUTFITTER", 11, UITheme.ACCENT))
+	box.add_child(UITheme.eyebrow("Outfitter"))
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(0, 230)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
