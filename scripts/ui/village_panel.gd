@@ -120,6 +120,10 @@ func _sell_photos() -> void:
 	if amount <= 0:
 		return
 	Bank.add_funds(amount)
+	var progress: Dictionary = SaveSystem.profile.get("progress", {})
+	progress["earned_total"] = int(progress.get("earned_total", 0)) + amount
+	SaveSystem.profile["progress"] = progress
+	Achievements.check_all()
 	AudioDirector.play("score_great", -9.0)
 	Game.notify("The centre pays $%d for your frames." % amount, "info")
 	SaveSystem.save_profile()

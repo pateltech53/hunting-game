@@ -7,6 +7,8 @@ extends Node3D
 var voxel_world: VoxelWorld
 var sky: SkySystem
 var weather: WeatherSystem
+var seasons: SeasonSystem
+var events: EventSystem
 var player: Player
 var photo_camera: PhotoCamera
 var rifle: Rifle
@@ -67,6 +69,18 @@ func _build_world() -> void:
 	add_child(weather)
 	weather.setup(sky, Game.world_seed)
 
+	seasons = SeasonSystem.new()
+	seasons.name = "Seasons"
+	add_child(seasons)
+	# Start in autumn: it is the best-looking season and the one that shows
+	# off what the photography is for.
+	seasons.setup(sky, SeasonSystem.Season.AUTUMN)
+
+	events = EventSystem.new()
+	events.name = "Events"
+	add_child(events)
+	events.setup(sky, weather, seasons, Game.world_seed)
+
 
 func _build_player() -> void:
 	player = Player.new()
@@ -109,6 +123,7 @@ func _build_systems() -> void:
 	player.rifle = rifle
 
 	scorer.setup(player, sky, voxel_world, weather)
+	scorer.events = events
 	scorer.subject_provider = wildlife.subjects
 
 	trail_guide = TrailGuide.new()

@@ -59,6 +59,9 @@ var weather: WeatherSystem
 ## Returns the array of things worth photographing near the player.
 var subject_provider: Callable = Callable()
 var contract_board: Node = null
+## Set by WorldRoot. A frame shot during a rare event is worth more, which is
+## the reason to abandon what you were doing and go and photograph it.
+var events: Node = null
 
 
 func setup(p: Player, sky_system: SkySystem, voxel_world: VoxelWorld,
@@ -289,13 +292,24 @@ func score(camera: PhotoCamera, analysis: Dictionary) -> Dictionary:
 	var rarity_bonus := 0.0
 	if not main.is_empty():
 		rarity_bonus = float(main.get("rarity", 0.0)) * 8.0
-	var final := clampf(total * 100.0 + rarity_bonus, 0.0, 100.0)
+
+	# So is a rare event. Being in the right place while the aurora is out is
+	# not craft, but it is worth photographing, and this is what says so.
+	var event_bonus := 0.0
+	var event_name := ""
+	if events != null and events.active != "":
+		event_bonus = float(events.photo_bonus())
+		event_name = String(events.display_name())
+		notes.append("Shot during the %s." % event_name.to_lower())
+
+	var final := clampf(total * 100.0 + rarity_bonus + event_bonus, 0.0, 100.0)
 
 	var record := {
 		"genre": genre,
 		"genre_label": spec["label"],
 		"score": snappedf(final, 0.1),
 		"grade": grade_for(final),
+		"event": event_name,
 		"species": main.get("species", ""),
 		"subject_name": main.get("name", ""),
 		"subject_state": main.get("state", ""),
@@ -621,6 +635,13 @@ func commit(record: Dictionary) -> void:
 	record["price"] = price
 	if price > 0:
 		SaveSystem.register_unsold(String(record.get("id", "")), price)
+
+	# Flags for the achievements that ask about circumstance rather than totals.
+	if sky != null and sky.time_of_day < 6.0 and not String(species).is_empty():
+		Achievements.set_flag("sunrise_photo")
+	if String(record.get("event", "")) != "":
+		Achievements.set_flag("event_photo")
+	Achievements.check_all()
 	var newly_unlocked := LensLibrary.refresh_unlocks(int(progress["reputation"]))
 	for l: Lens in newly_unlocked:
 		Game.notify("New lens unlocked: %s" % l.name, "unlock")

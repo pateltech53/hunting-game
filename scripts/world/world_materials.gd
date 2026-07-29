@@ -8,6 +8,10 @@ extends RefCounted
 
 const WIND_PARAM := "wildlight_wind"
 const WETNESS_PARAM := "wildlight_wetness"
+## Set by SeasonSystem. Foliage multiplies the tint into albedo; terrain and
+## grass lift toward white as snow builds.
+const SEASON_TINT_PARAM := "wildlight_season_tint"
+const SNOW_PARAM := "wildlight_snow"
 
 static var _terrain: StandardMaterial3D = null
 static var _creature: StandardMaterial3D = null
@@ -25,6 +29,12 @@ static func ensure_globals() -> void:
 	if not RenderingServer.global_shader_parameter_get_list().has(WIND_PARAM):
 		RenderingServer.global_shader_parameter_add(WIND_PARAM,
 			RenderingServer.GLOBAL_VAR_TYPE_VEC3, Vector3(0.3, 0.0, 0.1))
+	if not RenderingServer.global_shader_parameter_get_list().has(SEASON_TINT_PARAM):
+		RenderingServer.global_shader_parameter_add(SEASON_TINT_PARAM,
+			RenderingServer.GLOBAL_VAR_TYPE_VEC3, Vector3.ONE)
+	if not RenderingServer.global_shader_parameter_get_list().has(SNOW_PARAM):
+		RenderingServer.global_shader_parameter_add(SNOW_PARAM,
+			RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.0)
 	if not RenderingServer.global_shader_parameter_get_list().has(WETNESS_PARAM):
 		RenderingServer.global_shader_parameter_add(WETNESS_PARAM,
 			RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.0)
@@ -82,6 +92,8 @@ render_mode cull_disabled, diffuse_burley, specular_disabled;
 
 global uniform vec3 wildlight_wind;
 global uniform float wildlight_wetness;
+global uniform vec3 wildlight_season_tint;
+global uniform float wildlight_snow;
 
 void vertex() {
 	// Sway grows with height up the tree, so the crown moves and the base does
@@ -95,7 +107,12 @@ void vertex() {
 }
 
 void fragment() {
-	ALBEDO = COLOR.rgb;
+	// The season recolours the leaves; snow settles on upward faces only, so
+	// the underside of a crown stays dark the way it does in life.
+	vec3 leaf = COLOR.rgb * wildlight_season_tint;
+	float up = max(NORMAL.y, 0.0);
+	float settled = wildlight_snow * smoothstep(0.35, 0.95, up) * 0.75;
+	ALBEDO = mix(leaf, vec3(0.92, 0.93, 0.96), settled);
 	ROUGHNESS = mix(0.94, 0.62, wildlight_wetness);
 	SPECULAR = mix(0.1, 0.35, wildlight_wetness);
 	// Leaves pass a little light when the sun is behind them. Keep this low:
@@ -120,25 +137,39 @@ shader_type spatial;
 render_mode cull_disabled, diffuse_burley, specular_disabled;
 
 global uniform vec3 wildlight_wind;
+global uniform vec3 wildlight_season_tint;
+global uniform float wildlight_snow;
 
 void vertex() {
 	// Grass is the most responsive thing in the scene - it should ripple.
+	// Under snow it is pressed flat rather than removed.
 	vec3 origin = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 	float phase = TIME * 2.1 + origin.x * 0.55 + origin.z * 0.47;
 	float gust = sin(phase) * 0.6 + sin(phase * 3.1 + 0.8) * 0.4;
 	float amount = pow(max(VERTEX.y, 0.0), 1.1) * 0.55;
 	VERTEX.xz += wildlight_wind.xz * gust * amount;
+	VERTEX.y *= 1.0 - wildlight_snow * 0.75;
 }
 
 void fragment() {
-	ALBEDO = COLOR.rgb;
+	vec3 blade = COLOR.rgb * wildlight_season_tint;
+	ALBEDO = mix(blade, vec3(0.90, 0.92, 0.96), wildlight_snow * 0.80);
 	ROUGHNESS = 0.95;
-	BACKLIGHT = COLOR.rgb * 0.16;
+	BACKLIGHT = blade * 0.16 * (1.0 - wildlight_snow);
 }
 """
 	_grass = ShaderMaterial.new()
 	_grass.shader = shader
 	return _grass
+
+
+## Called by SeasonSystem each time the season moves. Foliage and grass read
+## the globals directly; terrain cannot, because it is a StandardMaterial3D
+## shared by every chunk, so it takes the tint here instead.
+static func apply_season(tint: Color, snow: float) -> void:
+	var mat := terrain()
+	var earth := Color(tint.r, tint.g, tint.b).lerp(Color(1, 1, 1), 0.55)
+	mat.albedo_color = earth.lerp(Color(0.94, 0.95, 0.98), clampf(snow, 0.0, 1.0) * 0.82)
 
 
 # -------------------------------------------------------------------- water

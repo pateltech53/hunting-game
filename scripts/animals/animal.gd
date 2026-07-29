@@ -81,6 +81,7 @@ func setup(s: Species, spawn: Vector3, voxel_world: VoxelWorld, sky_system: SkyS
 	player = hunter
 	track_manager = tracks
 	_rng.randomize()
+	_roll_personality()
 	_home = spawn
 	_home_radius = 30.0 + s.body_length * 14.0
 	global_position = spawn
@@ -105,6 +106,70 @@ func setup(s: Species, spawn: Vector3, voxel_world: VoxelWorld, sky_system: SkyS
 	_cache_parts()
 	_pick_new_target()
 	_call_timer = _rng.randf_range(species.call_cooldown.x, species.call_cooldown.y)
+
+
+## Names for the ones worth remembering. Built from what you can actually see
+## on the animal, so the name is a description you could have arrived at
+## yourself.
+const NOTABLE_MARKS := ["One-Ear", "Broken Antler", "the Grey", "Split Hoof",
+	"the Limper", "White Blaze", "the Old Boy", "Scarback", "Three-Toes",
+	"the Ghost", "Blackfoot", "the Wanderer"]
+
+## Hidden traits. Every animal is a slightly different animal, so two deer in
+## the same clearing do not behave identically - one holds its ground a beat
+## longer, one is away before you have raised the camera.
+var traits: Dictionary = {}
+var individual_name := ""
+var is_notable := false
+
+
+func _roll_personality() -> void:
+	# Age drives most of the rest: an old animal is slower, warier and harder
+	# to get near, and it is the one worth photographing.
+	var age: float = _rng.randf()
+	traits = {
+		"age": age,
+		"boldness": clampf(_rng.randfn(0.5, 0.20), 0.0, 1.0),
+		"nerve": clampf(_rng.randfn(0.5, 0.22), 0.0, 1.0),
+		"vigour": clampf(_rng.randfn(0.6, 0.18) * (1.0 - age * 0.35), 0.0, 1.0),
+		"wit": clampf(_rng.randfn(0.4 + age * 0.35, 0.18), 0.0, 1.0),
+	}
+
+	# Fold the traits back into the species values this animal actually uses.
+	var boldness: float = traits["boldness"]
+	var nerve: float = traits["nerve"]
+	var vigour: float = traits["vigour"]
+	var wit: float = traits["wit"]
+	_trait_wariness = clampf(species.wariness * lerpf(1.25, 0.75, nerve), 0.05, 0.99)
+	_trait_curiosity = clampf(species.curiosity * lerpf(0.35, 2.1, boldness), 0.0, 1.0)
+	_trait_flee_distance = species.flee_distance * lerpf(1.35, 0.70, nerve)
+	_trait_speed_run = species.speed_run * lerpf(0.82, 1.14, vigour)
+	_trait_vision = species.vision_range * lerpf(0.85, 1.25, wit)
+
+	# A handful are individuals rather than examples of a species. Old, wary
+	# animals are the likeliest to have earned a name.
+	if _rng.randf() < 0.04 + traits["age"] * 0.05:
+		is_notable = true
+		individual_name = NOTABLE_MARKS[_rng.randi_range(0, NOTABLE_MARKS.size() - 1)]
+		# A named animal is more of everything that made it survive this long.
+		_trait_wariness = clampf(_trait_wariness * 1.2, 0.0, 0.99)
+		_trait_vision *= 1.15
+
+
+## The species values this animal actually uses, after personality.
+var _trait_wariness := 0.5
+var _trait_curiosity := 0.2
+var _trait_flee_distance := 28.0
+var _trait_speed_run := 8.0
+var _trait_vision := 55.0
+
+
+## What to call it in the interface: the species, or the individual if it has
+## earned a name.
+func display_name() -> String:
+	if is_notable and individual_name != "":
+		return "%s %s" % [species.name, individual_name]
+	return species.name
 
 
 func _roll_measurements() -> void:
@@ -155,11 +220,11 @@ func _sense(delta: float) -> void:
 		var falloff := 1.0 - distance / species.hearing_range
 		detection = maxf(detection, noise * falloff * 1.4)
 
-	if distance < species.vision_range:
+	if distance < _trait_vision:
 		var forward := -global_transform.basis.z
 		var angle := rad_to_deg(forward.angle_to(to_player.normalized()))
 		if angle < species.vision_angle * 0.5:
-			var falloff := 1.0 - distance / species.vision_range
+			var falloff := 1.0 - distance / _trait_vision
 			var moving := clampf(Vector2(player.velocity.x, player.velocity.z).length()
 				/ 5.0, 0.15, 1.4)
 			var crouch_bonus: float = 0.45 if player.crouched else 1.0
@@ -171,7 +236,7 @@ func _sense(delta: float) -> void:
 			weather.wind())
 		detection = maxf(detection, scent * 1.3)
 
-	detection *= species.wariness * 1.4
+	detection *= _trait_wariness * 1.4
 	if detection > 0.0:
 		awareness = clampf(awareness + detection * delta * 1.6, 0.0, 1.4)
 	else:
@@ -210,7 +275,7 @@ func _check_predators(delta: float) -> bool:
 		if other.species.shoulder_height < species.shoulder_height * 0.6:
 			continue                                  # too small to be a threat
 		var d := global_position.distance_to(other.global_position)
-		if d < species.vision_range * 0.8:
+		if d < _trait_vision * 0.8:
 			_flee_from(other.global_position)
 			return true
 	return false
@@ -223,7 +288,7 @@ func _think(delta: float) -> void:
 	var distance := player.global_position.distance_to(global_position) if player != null \
 		else 999.0
 
-	if state != State.FLEE and (awareness >= 1.0 or distance < species.flee_distance * 0.45):
+	if state != State.FLEE and (awareness >= 1.0 or distance < _trait_flee_distance * 0.45):
 		_enter_flee()
 		return
 	if state != State.FLEE and _check_predators(delta):
@@ -239,7 +304,7 @@ func _think(delta: float) -> void:
 			if awareness < 0.25 and _state_timer <= 0.0:
 				_set_state(State.WANDER, "walking")
 				_pick_new_target()
-			elif _state_timer <= 0.0 and distance < species.flee_distance:
+			elif _state_timer <= 0.0 and distance < _trait_flee_distance:
 				_enter_flee()
 		State.FLEE:
 			if _flee_timer <= 0.0:
@@ -311,11 +376,11 @@ func _pick_purposeful_target() -> void:
 	# at you, which is how the best portraits happen.
 	if player != null and _curious_cooldown <= 0.0 and awareness < 0.3:
 		var gap := global_position.distance_to(player.global_position)
-		if gap < species.vision_range and gap > species.flee_distance * 1.2 \
-				and _rng.randf() < species.curiosity:
+		if gap < _trait_vision and gap > _trait_flee_distance * 1.2 \
+				and _rng.randf() < _trait_curiosity:
 			var toward := (player.global_position - global_position).normalized()
 			_target = _valid_ground(global_position + toward
-				* (gap - species.flee_distance * 1.1))
+				* (gap - _trait_flee_distance * 1.1))
 			intent = "curious"
 			_curious_cooldown = _rng.randf_range(20.0, 60.0)
 			_set_state(State.WANDER, "walking")
@@ -396,7 +461,7 @@ func _flee_from(threat: Vector3) -> void:
 	var away := (global_position - threat).normalized()
 	if away.length() < 0.1:
 		away = Vector3.FORWARD
-	var run := 30.0 + species.flee_distance
+	var run := 30.0 + _trait_flee_distance
 	_target = _valid_ground(global_position + away * run + Vector3(
 		_rng.randf_range(-12.0, 12.0), 0.0, _rng.randf_range(-12.0, 12.0)))
 	_flee_timer = FLEE_MEMORY + _rng.randf_range(0.0, 4.0)
@@ -412,7 +477,7 @@ func _enter_flee() -> void:
 		else Vector3.FORWARD
 	if away.length() < 0.1:
 		away = Vector3.FORWARD
-	var run := 30.0 + species.flee_distance
+	var run := 30.0 + _trait_flee_distance
 	_target = _valid_ground(global_position + away * run + Vector3(
 		_rng.randf_range(-12.0, 12.0), 0.0, _rng.randf_range(-12.0, 12.0)))
 	_flee_timer = FLEE_MEMORY + _rng.randf_range(0.0, 4.0)
@@ -489,7 +554,7 @@ func _move(delta: float) -> void:
 	var want_speed := 0.0
 	match state:
 		State.FLEE:
-			want_speed = species.speed_run
+			want_speed = _trait_speed_run
 		State.WANDER:
 			want_speed = species.speed_walk
 		State.ALERT:
@@ -548,7 +613,7 @@ func _leave_tracks() -> void:
 func _animate(delta: float) -> void:
 	if _model == null:
 		return
-	var moving := clampf(_speed / maxf(species.speed_run, 0.1), 0.0, 1.0)
+	var moving := clampf(_speed / maxf(_trait_speed_run, 0.1), 0.0, 1.0)
 	_gait += delta * (3.0 + moving * 16.0)
 
 	for i in _legs.size():
@@ -668,7 +733,7 @@ func subject_info() -> Dictionary:
 	return {
 		"kind": "animal",
 		"species": species.id,
-		"name": species.name,
+		"name": display_name(),
 		"state": "downed" if is_dead else behaviour,
 		"rarity": species.rarity,
 		"value": species.photo_value,

@@ -356,6 +356,18 @@ func _report_smoke() -> void:
 			c.progress_text()])
 	print("[smoke] audio bank ready: sfx=%s music=%s" % [AudioDirector.ready_sfx,
 		AudioDirector.ready_music])
+	var seasons: SeasonSystem = world.get("seasons")
+	var events: EventSystem = world.get("events")
+	print("[smoke] season %s (year %.2f), snow %.2f, event '%s'" % [
+		seasons.display_name(), seasons.year_position, seasons.snow_depth(),
+		events.display_name()])
+	var notable := 0
+	for a: Animal in wildlife.active_animals():
+		if a.is_notable:
+			notable += 1
+	print("[smoke] notable individuals afield: %d" % notable)
+	print("[smoke] achievements unlocked: %d of %d" % [
+		Achievements.unlocked_count(), Achievements.LIST.size()])
 	print("[smoke] funds $%d, unsold %d frames worth $%d, larder %.1f kg" % [
 		Bank.funds(), SaveSystem.unsold_count(), SaveSystem.unsold_total(),
 		float(SaveSystem.profile.get("progress", {}).get("larder", 0.0))])
